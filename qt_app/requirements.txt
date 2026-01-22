@@ -1,0 +1,18 @@
+# NYC Airbnb Dashboard - PySide6 Modern UI
+# Requirements
+
+# Core Framework
+PySide6>=6.6.0
+PySide6-Essentials>=6.6.0
+PySide6-Addons>=6.6.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Visualization
+plotly>=5.18.0
+kaleido>=0.2.1  # For static image export
+
+# Utilities
+python-dotenv>=1.0.0
