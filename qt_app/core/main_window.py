@@ -118,16 +118,16 @@ class MainWindow(QMainWindow):
     
     def _setup_top_bar(self, parent_layout):
         """Setup top toolbar"""
-        top_bar = QWidget()
-        top_bar.setFixedHeight(56)
-        top_bar.setStyleSheet("""
+        self.top_bar = QWidget()
+        self.top_bar.setFixedHeight(56)
+        self.top_bar.setStyleSheet("""
             QWidget {
                 background-color: #161b22;
                 border-bottom: 1px solid #21262d;
             }
         """)
         
-        layout = QHBoxLayout(top_bar)
+        layout = QHBoxLayout(self.top_bar)
         layout.setContentsMargins(20, 0, 20, 0)
         
         # View title
@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
         export_btn.clicked.connect(self._export_data)
         layout.addWidget(export_btn)
         
-        parent_layout.addWidget(top_bar)
+        parent_layout.addWidget(self.top_bar)
     
     def _setup_loading_overlay(self):
         """Setup loading overlay"""
@@ -454,6 +454,10 @@ class MainWindow(QMainWindow):
             f"💰 Avg ${stats['avg_price']:.0f} | "
             f"👥 {stats['total_hosts']:,} hosts"
         )
+                
+        # Update filter panel data summary
+        self.filter_panel.update_summary(stats)
+    
     
     def _on_theme_toggle(self, is_dark: bool):
         """Handle theme toggle"""
@@ -465,9 +469,21 @@ class MainWindow(QMainWindow):
     def _update_top_bar_theme(self, is_dark: bool):
         """Update top bar colors"""
         if is_dark:
+            self.top_bar.setStyleSheet("""
+                QWidget {
+                    background-color: #161b22;
+                    border-bottom: 1px solid #21262d;
+                }
+            """)
             self.view_title.setStyleSheet("QLabel { font-size: 18px; font-weight: 600; color: #e6edf3; }")
             self.stats_label.setStyleSheet("color: #8b949e; font-size: 13px;")
         else:
+            self.top_bar.setStyleSheet("""
+                QWidget {
+                    background-color: #ffffff;
+                    border-bottom: 1px solid #d0d7de;
+                }
+            """)
             self.view_title.setStyleSheet("QLabel { font-size: 18px; font-weight: 600; color: #1f2328; }")
             self.stats_label.setStyleSheet("color: #656d76; font-size: 13px;")
     
