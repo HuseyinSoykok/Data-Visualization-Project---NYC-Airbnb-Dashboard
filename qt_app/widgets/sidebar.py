@@ -16,8 +16,11 @@ class NavItem(QPushButton):
     def __init__(self, icon: str, text: str, key: str, parent=None):
         super().__init__(parent)
         self.key = key
+        self.icon = icon
+        self.text_label = text
         self._active = False
         self._is_dark = True
+        self._expanded = True
         
         self.setText(f"  {icon}  {text}")
         self.setFixedHeight(44)
@@ -33,57 +36,70 @@ class NavItem(QPushButton):
     def set_theme(self, is_dark: bool):
         self._is_dark = is_dark
     
+    def set_expanded(self, expanded: bool):
+        """Update text visibility based on sidebar state"""
+        self._expanded = expanded
+        if expanded:
+            self.setText(f"  {self.icon}  {self.text_label}")
+        else:
+            self.setText(self.icon)
+        self._update_style()
+    
     def _update_style(self):
+        text_align = "center" if not self._expanded else "left"
+        padding = "0px" if not self._expanded else "16px"
+        font_size = "18px" if not self._expanded else "14px"
+        
         if self._active:
-            self.setStyleSheet("""
-                QPushButton {
+            self.setStyleSheet(f"""
+                QPushButton {{
                     background-color: rgba(88, 166, 255, 0.15);
                     color: #58a6ff;
                     border: none;
                     border-left: 3px solid #58a6ff;
                     border-radius: 0;
-                    text-align: left;
-                    padding-left: 16px;
-                    font-size: 14px;
+                    text-align: {text_align};
+                    padding-left: {padding};
+                    font-size: {font_size};
                     font-weight: 500;
-                }
+                }}
             """)
         else:
             if self._is_dark:
-                self.setStyleSheet("""
-                    QPushButton {
+                self.setStyleSheet(f"""
+                    QPushButton {{
                         background-color: transparent;
                         color: #8b949e;
                         border: none;
                         border-left: 3px solid transparent;
                         border-radius: 0;
-                        text-align: left;
-                        padding-left: 16px;
-                        font-size: 14px;
+                        text-align: {text_align};
+                        padding-left: {padding};
+                        font-size: {font_size};
                         font-weight: 400;
-                    }
-                    QPushButton:hover {
+                    }}
+                    QPushButton:hover {{
                         background-color: rgba(255, 255, 255, 0.05);
                         color: #e6edf3;
-                    }
+                    }}
                 """)
             else:
-                self.setStyleSheet("""
-                    QPushButton {
+                self.setStyleSheet(f"""
+                    QPushButton {{
                         background-color: transparent;
                         color: #656d76;
                         border: none;
                         border-left: 3px solid transparent;
                         border-radius: 0;
-                        text-align: left;
-                        padding-left: 16px;
-                        font-size: 14px;
+                        text-align: {text_align};
+                        padding-left: {padding};
+                        font-size: {font_size};
                         font-weight: 400;
-                    }
-                    QPushButton:hover {
+                    }}
+                    QPushButton:hover {{
                         background-color: rgba(0, 0, 0, 0.05);
                         color: #1f2328;
-                    }
+                    }}
                 """)
 
 
@@ -96,9 +112,10 @@ class SidebarSection(QWidget):
         self.layout.setContentsMargins(0, 8, 0, 8)
         self.layout.setSpacing(2)
         
+        self.title_label = None
         if title:
-            title_label = QLabel(title.upper())
-            title_label.setStyleSheet("""
+            self.title_label = QLabel(title.upper())
+            self.title_label.setStyleSheet("""
                 QLabel {
                     color: #6e7681;
                     font-size: 11px;
@@ -108,10 +125,15 @@ class SidebarSection(QWidget):
                     background: transparent;
                 }
             """)
-            self.layout.addWidget(title_label)
+            self.layout.addWidget(self.title_label)
     
     def add_item(self, item: NavItem):
         self.layout.addWidget(item)
+    
+    def set_expanded(self, expanded: bool):
+        """Show/hide section title based on sidebar state"""
+        if self.title_label:
+            self.title_label.setVisible(expanded)
 
 
 class ModernSidebar(QWidget):
@@ -123,8 +145,9 @@ class ModernSidebar(QWidget):
         super().__init__(parent)
         self._expanded = True
         self._expanded_width = 260
-        self._collapsed_width = 70
+        self._collapsed_width = 56
         self._items = {}
+        self._sections = []
         self._current_key = None
         
         self.setFixedWidth(self._expanded_width)
@@ -256,6 +279,7 @@ class ModernSidebar(QWidget):
         """Add a new section to the sidebar"""
         section = SidebarSection(title)
         self.nav_layout.addWidget(section)
+        self._sections.append(section)
         return section
     
     def add_nav_item(self, section: SidebarSection, icon: str, text: str, key: str):
@@ -307,11 +331,15 @@ class ModernSidebar(QWidget):
         # Update visibility of text elements
         self.title_label.setVisible(self._expanded)
         self.theme_label.setVisible(self._expanded)
+        self.theme_toggle.setVisible(self._expanded)
         
+        # Hide section titles when collapsed
+        for section in self._sections:
+            section.set_expanded(self._expanded)
+        
+        # Update all nav items to show/hide text
         for item in self._items.values():
-            if self._expanded:
-                item.setText(item.text())  # Restore full text
-            # In collapsed mode, you might want to show only icons
+            item.set_expanded(self._expanded)
     
     def is_expanded(self) -> bool:
         return self._expanded
