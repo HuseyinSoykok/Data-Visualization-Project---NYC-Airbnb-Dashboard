@@ -242,9 +242,28 @@ class ModernSidebar(QWidget):
         
         # Footer
         footer = QWidget()
-        footer.setFixedHeight(60)
+        footer.setFixedHeight(100)
         footer_layout = QVBoxLayout(footer)
         footer_layout.setContentsMargins(12, 8, 12, 12)
+        footer_layout.setSpacing(8)
+        
+        # Grayscale toggle in footer
+        grayscale_container = QWidget()
+        grayscale_layout = QHBoxLayout(grayscale_container)
+        grayscale_layout.setContentsMargins(8, 0, 8, 0)
+        
+        self.grayscale_label = QLabel("⚫ Grayscale")
+        self.grayscale_label.setStyleSheet("color: #8b949e; font-size: 13px; background: transparent;")
+        grayscale_layout.addWidget(self.grayscale_label)
+        
+        grayscale_layout.addStretch()
+        
+        from qt_app.widgets.custom_widgets import AnimatedToggle
+        self.grayscale_toggle = AnimatedToggle()
+        self.grayscale_toggle.setChecked(False)
+        grayscale_layout.addWidget(self.grayscale_toggle)
+        
+        footer_layout.addWidget(grayscale_container)
         
         # Theme toggle in footer
         theme_container = QWidget()
@@ -257,7 +276,6 @@ class ModernSidebar(QWidget):
         
         theme_layout.addStretch()
         
-        from qt_app.widgets.custom_widgets import AnimatedToggle
         self.theme_toggle = AnimatedToggle()
         self.theme_toggle.setChecked(True)
         theme_layout.addWidget(self.theme_toggle)
@@ -332,6 +350,8 @@ class ModernSidebar(QWidget):
         self.title_label.setVisible(self._expanded)
         self.theme_label.setVisible(self._expanded)
         self.theme_toggle.setVisible(self._expanded)
+        self.grayscale_label.setVisible(self._expanded)
+        self.grayscale_toggle.setVisible(self._expanded)
         
         # Hide section titles when collapsed
         for section in self._sections:

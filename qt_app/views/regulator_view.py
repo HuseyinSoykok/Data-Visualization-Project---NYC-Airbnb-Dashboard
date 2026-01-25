@@ -6,7 +6,7 @@ Enhanced with app_en.py features: commercial vs regular comparison, density heat
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QHBoxLayout, QWidget, QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QHBoxLayout, QWidget, QTableWidget, QTableWidgetItem, QHeaderView, QSlider
 from PySide6.QtCore import Qt
 
 from qt_app.views.base_view import BaseView
@@ -15,6 +15,10 @@ from qt_app.widgets.custom_widgets import ModernCard, Badge
 
 class RegulatorView(BaseView):
     """View for Regulator persona (Dr. Chen)"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.heatmap_radius = 15  # Default density heatmap radius
     
     def _setup_content(self):
         # Set header info  
@@ -33,7 +37,7 @@ class RegulatorView(BaseView):
         )
         self.content_layout.addWidget(task_card)
         
-        # Stat cards
+        # Stat cards - always colorful (not affected by grayscale mode)
         self.illegal_card = self.add_stat_card("⚠️", "0", "Potential Violations (>30 nights)", "#f85149")
         self.commercial_card = self.add_stat_card("🏢", "0", "Commercial Listings", "#d29922")
         self.unlicensed_card = self.add_stat_card("📝", "0%", "High Availability Listings", "#58a6ff")
@@ -42,6 +46,31 @@ class RegulatorView(BaseView):
         
         # Charts - Row 1: Violation Map
         self.violation_map = self.add_chart(0, 0, 1, 2)
+        
+        # Add heatmap intensity slider control right after the map
+        slider_container = QWidget()
+        slider_layout = QHBoxLayout(slider_container)
+        slider_layout.setContentsMargins(0, 8, 0, 16)
+        
+        slider_label = QLabel("🔥 Heatmap Intensity:")
+        slider_label.setStyleSheet("font-weight: 600; font-size: 13px;")
+        slider_layout.addWidget(slider_label)
+        
+        self.intensity_slider = QSlider(Qt.Horizontal)
+        self.intensity_slider.setRange(5, 50)  # Radius from 5 to 50
+        self.intensity_slider.setValue(15)  # Default
+        self.intensity_slider.setTickInterval(5)
+        self.intensity_slider.setFixedWidth(200)
+        self.intensity_slider.setToolTip("Adjust the heatmap density radius (lower = sharper hotspots, higher = broader patterns)")
+        self.intensity_slider.valueChanged.connect(self._on_intensity_changed)
+        slider_layout.addWidget(self.intensity_slider)
+        
+        self.intensity_value_label = QLabel("15")
+        self.intensity_value_label.setStyleSheet("font-size: 13px; min-width: 30px;")
+        slider_layout.addWidget(self.intensity_value_label)
+        
+        slider_layout.addStretch()
+        self.content_layout.addWidget(slider_container)
         
         # Row 2: Min nights + Commercial density
         self.min_nights_chart = self.add_chart(1, 0)
@@ -148,20 +177,25 @@ class RegulatorView(BaseView):
         # Update table theme
         self._update_table_theme(is_dark)
         
+        # Update widget themes
+        self._update_widget_themes(is_dark)
+        
         # Calculate violation metrics
         df_violations = df[(df['room_type'] == 'Entire home/apt') & (df['minimum_nights'] < 30)]
         violations_count = len(df_violations)
         self.illegal_card.set_value(f"{violations_count:,}")
         
-        # Commercial listings (using is_commercial flag or fallback)
-        if 'is_commercial' in df.columns:
-            commercial_count = df['is_commercial'].sum()
-            df_commercial = df[df['is_commercial'] == True]
-            df_regular = df[df['is_commercial'] == False]
-        else:
-            df_commercial = df[(df['availability_365'] > 300) | (df['calculated_host_listings_count'] > 5)]
-            df_regular = df[(df['availability_365'] <= 300) & (df['calculated_host_listings_count'] <= 5)]
-            commercial_count = len(df_commercial)
+        # Commercial listings - ensure consistent definition
+        # Commercial = high availability (>300 days) OR many listings (>5) per host
+        if 'is_commercial' not in df.columns:
+            df['is_commercial'] = (
+                (df['availability_365'] > 300) | 
+                (df['calculated_host_listings_count'] > 5)
+            ).astype(bool)
+        
+        df_commercial = df[df['is_commercial'] == True]
+        df_regular = df[df['is_commercial'] == False]
+        commercial_count = len(df_commercial)
         
         self.commercial_card.set_value(f"{commercial_count:,}")
         
@@ -179,35 +213,54 @@ class RegulatorView(BaseView):
         compliance_rate = compliant / len(df) * 100 if len(df) > 0 else 0
         self.compliance_card.set_value(f"{compliance_rate:.1f}%")
         
+        # Calculate violation rate for context
+        violation_rate = len(df_violations) / len(df) * 100 if len(df) > 0 else 0
+        
         # Violation Map with heatmap-style density
-        map_data = df_violations.sample(n=min(2000, len(df_violations)), random_state=42) if len(df_violations) > 2000 else df_violations
+        # Increased sample size for better density representation
+        map_data = df_violations.sample(n=min(4000, len(df_violations)), random_state=42) if len(df_violations) > 4000 else df_violations
         
         if len(map_data) > 0:
             # Enhanced colorbar colors for dark/light mode
             colorbar_text = '#e6edf3' if is_dark else '#1f2328'
             
+            # Grayscale-aware color scale
+            if self.theme_manager.grayscale_mode:
+                map_colorscale = [
+                    [0.0, '#f0f0f0'],
+                    [0.3, '#c0c0c0'],
+                    [0.6, '#808080'],
+                    [0.8, '#404040'],
+                    [1.0, '#1a1a1a']
+                ]
+            else:
+                map_colorscale = [
+                    [0.0, '#fef0d9'],
+                    [0.3, '#fdcc8a'],
+                    [0.6, '#fc8d59'],
+                    [0.8, '#e34a33'],
+                    [1.0, '#b30000']
+                ]
+            
             fig_map = px.density_mapbox(
                 map_data,
                 lat='latitude',
                 lon='longitude',
-                radius=15,
+                radius=self.heatmap_radius,  # Use configurable radius
                 zoom=10,
                 center=dict(lat=40.7128, lon=-74.0060),
                 title='⚠️ Violation Density Heatmap (Entire Homes, Min Stay < 30)',
-                color_continuous_scale=[
-                    [0.0, '#fef0d9'],   # Light yellow (low density)
-                    [0.3, '#fdcc8a'],   # Orange
-                    [0.6, '#fc8d59'],   # Dark orange
-                    [0.8, '#e34a33'],   # Red
-                    [1.0, '#b30000']    # Dark red (high density)
-                ]
+                color_continuous_scale=map_colorscale
             )
             fig_map.update_layout(
                 mapbox_style='carto-darkmatter' if is_dark else 'carto-positron',
                 height=700,
                 margin=dict(l=0, r=0, t=50, b=0),
                 coloraxis_colorbar=dict(
-                    title=dict(text="Violation Density", font=dict(color=colorbar_text, size=12)),
+                    title=dict(
+                        text="<b>Violation<br>Density Index</b>",
+                        font=dict(color=colorbar_text, size=12)
+                    ),
                     tickfont=dict(color=colorbar_text, size=10),
                     thickness=15,
                     len=0.7,
@@ -220,7 +273,8 @@ class RegulatorView(BaseView):
                 ),
                 annotations=[
                     dict(
-                        text='<i>Shows concentration of entire home listings with <30 night minimum (potential violations)</i>',
+                        text=f'<i>Shows concentration of entire home listings with <30 night minimum (potential violations)<br>'
+                             f'Violation Rate: {violation_rate:.1f}% of all listings | Sample Size: {len(map_data):,} properties</i>',
                         xref='paper', yref='paper',
                         x=0.5, y=0.01,
                         showarrow=False,
@@ -234,15 +288,18 @@ class RegulatorView(BaseView):
             self.violation_map.set_figure(fig_map, is_dark)
         
         # Minimum Nights Distribution
+        hist_color = ['#808080'] if self.theme_manager.grayscale_mode else ['#f85149']
+        vline_color = '#a0a0a0' if self.theme_manager.grayscale_mode else '#3fb950'
+        
         fig_nights = px.histogram(
             df[df['minimum_nights'] <= 90],
             x='minimum_nights',
             nbins=30,
             title='📅 Minimum Nights Distribution',
             labels={'minimum_nights': 'Minimum Nights Required'},
-            color_discrete_sequence=['#f85149']
+            color_discrete_sequence=hist_color
         )
-        fig_nights.add_vline(x=30, line_dash="dash", line_color="#3fb950", 
+        fig_nights.add_vline(x=30, line_dash="dash", line_color=vline_color, 
                             annotation_text="Legal 30-day threshold", annotation_position="top right")
         fig_nights.update_layout(
             height=420,
@@ -261,13 +318,16 @@ class RegulatorView(BaseView):
             commercial_by_borough.columns = ['Borough', 'Commercial', 'Total']
             commercial_by_borough['Commercial %'] = commercial_by_borough['Commercial'] / commercial_by_borough['Total'] * 100
             
+            # Grayscale-aware color scale
+            comm_colorscale = [[0,'#f0f0f0'],[0.5,'#808080'],[1,'#1a1a1a']] if self.theme_manager.grayscale_mode else [[0,'#fef2f2'],[0.5,'#ef4444'],[1,'#991b1b']]
+            
             fig_density = px.bar(
                 commercial_by_borough,
                 x='Borough',
                 y='Commercial %',
                 title='🏢 Commercial Listing Rate by Borough',
                 color='Commercial %',
-                color_continuous_scale='Reds',
+                color_continuous_scale=comm_colorscale,
                 text=[f'{x:.1f}%' for x in commercial_by_borough['Commercial %']]
             )
             fig_density.update_traces(textposition='outside')
@@ -282,13 +342,16 @@ class RegulatorView(BaseView):
             host_size_violations = df[df['room_type'] == 'Entire home/apt'].groupby('host_size').size().reset_index()
             host_size_violations.columns = ['Host Size', 'Listings']
             
+            # Grayscale-aware color scale
+            host_colorscale = [[0,'#f0f0f0'],[0.5,'#808080'],[1,'#1a1a1a']] if self.theme_manager.grayscale_mode else [[0,'#fff7ed'],[0.5,'#f97316'],[1,'#9a3412']]
+            
             fig_density = px.bar(
                 host_size_violations,
                 x='Host Size',
                 y='Listings',
                 title='🏬 Entire Home Listings by Host Portfolio Size',
                 color='Listings',
-                color_continuous_scale='Oranges'
+                color_continuous_scale=host_colorscale
             )
             fig_density.update_layout(
                 height=400,
@@ -302,14 +365,8 @@ class RegulatorView(BaseView):
         borough_violations = df_violations.groupby('neighbourhood_group').size().reset_index()
         borough_violations.columns = ['Borough', 'Violations']
         
-        # Consistent borough color mapping
-        borough_color_map = {
-            'Manhattan': '#f59e0b',
-            'Brooklyn': '#ef4444',
-            'Queens': '#10b981',
-            'Bronx': '#3b82f6',
-            'Staten Island': '#8b5cf6'
-        }
+        # Use grayscale-aware borough colors
+        borough_color_map = self._get_borough_colors()
         
         fig_borough = px.pie(
             borough_violations,
@@ -323,16 +380,23 @@ class RegulatorView(BaseView):
         fig_borough.update_traces(textposition='inside', textinfo='percent+label')
         self.borough_violations.set_figure(fig_borough, is_dark)
         
-        # Availability Analysis
+        # Availability Analysis - Violin Plot
+        # Get grayscale-aware colors for room types
+        room_type_colors = self._get_room_type_colors()
+        
         fig_avail = go.Figure()
         
         for room_type in df['room_type'].unique():
             room_data = df[df['room_type'] == room_type]['availability_365']
+            # Use room type specific color
+            marker_color = room_type_colors.get(room_type, '#808080')
             fig_avail.add_trace(go.Violin(
                 y=room_data,
                 name=room_type,
                 box_visible=True,
-                meanline_visible=True
+                meanline_visible=True,
+                marker_color=marker_color,
+                line_color=marker_color
             ))
         
         fig_avail.update_layout(
@@ -343,7 +407,9 @@ class RegulatorView(BaseView):
             showlegend=True,
             yaxis=dict(tickformat=',d')
         )
-        fig_avail.add_hline(y=180, line_dash="dash", line_color="#f85149",
+        
+        hline_color = '#808080' if self.theme_manager.grayscale_mode else '#f85149'
+        fig_avail.add_hline(y=180, line_dash="dash", line_color=hline_color,
                           annotation_text="Housing Impact Threshold (180 days)", annotation_position="top right")
         self.availability_analysis.set_figure(fig_avail, is_dark)
         
@@ -377,3 +443,87 @@ class RegulatorView(BaseView):
                 self.comparison_table.setItem(i, 1, QTableWidgetItem(commercial))
                 self.comparison_table.setItem(i, 2, QTableWidgetItem(regular))
                 self.comparison_table.setItem(i, 3, QTableWidgetItem(diff))
+    
+    def _get_borough_colors(self):
+        """Get borough colors based on grayscale mode"""
+        if self.theme_manager.grayscale_mode:
+            return {
+                'Manhattan': '#1a1a1a',
+                'Brooklyn': '#404040',
+                'Queens': '#666666',
+                'Bronx': '#8c8c8c',
+                'Staten Island': '#b3b3b3'
+            }
+        else:
+            return {
+                'Manhattan': '#f59e0b',
+                'Brooklyn': '#3b82f6',
+                'Queens': '#10b981',
+                'Bronx': '#ef4444',
+                'Staten Island': '#8b5cf6'
+            }
+    
+    def _get_room_type_colors(self):
+        """Get room type colors based on grayscale mode"""
+        if self.theme_manager.grayscale_mode:
+            return {
+                'Entire home/apt': '#1a1a1a',
+                'Private room': '#666666',
+                'Shared room': '#b3b3b3'
+            }
+        else:
+            return {
+                'Entire home/apt': '#3b82f6',
+                'Private room': '#10b981',
+                'Shared room': '#f59e0b'
+            }
+    
+    def _on_intensity_changed(self, value: int):
+        """Handle heatmap intensity slider change"""
+        self.heatmap_radius = value
+        self.intensity_value_label.setText(str(value))
+        self.refresh()
+    
+    def _update_widget_themes(self, is_dark: bool):
+        """Update custom widget themes"""
+        if is_dark:
+            slider_style = """
+                QSlider::groove:horizontal {
+                    background: #21262d;
+                    height: 6px;
+                    border-radius: 3px;
+                }
+                QSlider::handle:horizontal {
+                    background: #58a6ff;
+                    width: 16px;
+                    height: 16px;
+                    margin: -5px 0;
+                    border-radius: 8px;
+                }
+                QSlider::handle:horizontal:hover {
+                    background: #79c0ff;
+                }
+            """
+            text_color = "#e6edf3"
+        else:
+            slider_style = """
+                QSlider::groove:horizontal {
+                    background: #eaeef2;
+                    height: 6px;
+                    border-radius: 3px;
+                }
+                QSlider::handle:horizontal {
+                    background: #0969da;
+                    width: 16px;
+                    height: 16px;
+                    margin: -5px 0;
+                    border-radius: 8px;
+                }
+                QSlider::handle:horizontal:hover {
+                    background: #0860ca;
+                }
+            """
+            text_color = "#1f2328"
+        
+        self.intensity_slider.setStyleSheet(slider_style)
+        self.intensity_value_label.setStyleSheet(f"color: {text_color}; font-size: 13px; min-width: 30px;")

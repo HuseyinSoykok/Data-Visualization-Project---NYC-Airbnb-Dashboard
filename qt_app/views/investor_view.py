@@ -34,7 +34,7 @@ class InvestorView(BaseView):
         )
         self.content_layout.addWidget(task_card)
         
-        # Stat cards
+        # Stat cards - always colorful (not affected by grayscale mode)
         self.revenue_card = self.add_stat_card("💵", "$0", "Est. Annual Revenue/Listing", "#3fb950")
         self.occupancy_card = self.add_stat_card("📊", "0%", "Avg Availability Rate", "#58a6ff")
         self.hosts_card = self.add_stat_card("👥", "0", "Professional Hosts (10+)", "#d29922")
@@ -211,14 +211,23 @@ class InvestorView(BaseView):
         map_data = self.data_manager.get_map_data(3000)
         map_data['estimated_revenue'] = map_data['price'] * (365 - map_data['availability_365'])
         
-        # Custom colorscale that works in both modes: blue -> purple -> orange -> red
-        REVENUE_COLORSCALE = [
-            [0, '#3b82f6'],      # Blue (low)
-            [0.25, '#8b5cf6'],   # Purple
-            [0.5, '#f59e0b'],    # Orange (mid)
-            [0.75, '#ef4444'],   # Red
-            [1, '#dc2626']       # Dark red (high)
-        ]
+        # Grayscale-aware colorscale
+        if self.theme_manager.grayscale_mode:
+            REVENUE_COLORSCALE = [
+                [0, '#f0f0f0'],
+                [0.25, '#c0c0c0'],
+                [0.5, '#808080'],
+                [0.75, '#404040'],
+                [1, '#1a1a1a']
+            ]
+        else:
+            REVENUE_COLORSCALE = [
+                [0, '#3b82f6'],
+                [0.25, '#8b5cf6'],
+                [0.5, '#f59e0b'],
+                [0.75, '#ef4444'],
+                [1, '#dc2626']
+            ]
         
         fig_map = px.scatter_mapbox(
             map_data,
@@ -277,6 +286,9 @@ class InvestorView(BaseView):
         df_violin = df_analysis[df_analysis['price'] <= 500]
         
         if len(df_violin) > 0 and df_violin['neighbourhood_group'].nunique() > 0:
+            # Grayscale-aware colors
+            borough_colors = self._get_borough_colors()
+            
             fig_violin_borough = px.violin(
                 df_violin,
                 x='neighbourhood_group',
@@ -285,7 +297,8 @@ class InvestorView(BaseView):
                 box=True,
                 points='outliers',
                 title='🎻 Price Distribution by Borough (Violin + Box)',
-                labels={'neighbourhood_group': 'Borough', 'price': 'Price ($)'}
+                labels={'neighbourhood_group': 'Borough', 'price': 'Price ($)'},
+                color_discrete_map=borough_colors
             )
             fig_violin_borough.update_layout(
                 height=420,
@@ -322,6 +335,9 @@ class InvestorView(BaseView):
         
         # Violin Plot - Price by Room Type
         if len(df_violin) > 0 and df_violin['room_type'].nunique() > 0:
+            # Grayscale-aware colors
+            room_colors = self._get_room_type_colors()
+            
             fig_violin_room = px.violin(
                 df_violin,
                 x='room_type',
@@ -330,7 +346,8 @@ class InvestorView(BaseView):
                 box=True,
                 points='outliers',
                 title='🎻 Price Distribution by Room Type',
-                labels={'room_type': 'Room Type', 'price': 'Price ($)'}
+                labels={'room_type': 'Room Type', 'price': 'Price ($)'},
+                color_discrete_map=room_colors
             )
             fig_violin_room.update_layout(
                 height=420,
@@ -368,12 +385,16 @@ class InvestorView(BaseView):
         # ROI Analysis Chart
         roi_data = self.data_manager.get_roi_data()
         if len(roi_data) > 0:
+            # Grayscale-aware colors
+            revenue_color = '#808080' if self.theme_manager.grayscale_mode else '#3fb950'
+            potential_color = '#404040' if self.theme_manager.grayscale_mode else '#58a6ff'
+            
             fig_roi = go.Figure()
             fig_roi.add_trace(go.Bar(
                 name='Avg Revenue',
                 x=roi_data['room_type'],
                 y=roi_data['estimated_annual_revenue'],
-                marker_color='#3fb950',
+                marker_color=revenue_color,
                 text=[f'${x:,.0f}' for x in roi_data['estimated_annual_revenue']],
                 textposition='auto'
             ))
@@ -381,7 +402,7 @@ class InvestorView(BaseView):
                 name='Avg Price × 365',
                 x=roi_data['room_type'],
                 y=roi_data['price'] * 365,
-                marker_color='#58a6ff',
+                marker_color=potential_color,
                 text=[f'${x:,.0f}' for x in (roi_data['price'] * 365)],
                 textposition='auto'
             ))
@@ -414,6 +435,8 @@ class InvestorView(BaseView):
             self.roi_chart.set_figure(fig_roi, is_dark, show_colorbar=False)
         
         # Host Portfolio Analysis
+        pie_colors = ['#e0e0e0', '#c0c0c0', '#a0a0a0', '#808080'] if self.theme_manager.grayscale_mode else ['#58a6ff', '#3fb950', '#d29922', '#f85149']
+        
         if 'host_category' in df.columns:
             host_stats = self.data_manager.get_host_category_stats()
             fig_portfolio = px.pie(
@@ -421,7 +444,7 @@ class InvestorView(BaseView):
                 values='count',
                 names='host_category',
                 title='👥 Market Share by Host Category',
-                color_discrete_sequence=['#58a6ff', '#3fb950', '#d29922', '#f85149']
+                color_discrete_sequence=pie_colors
             )
         else:
             host_sizes = df.groupby('host_size').agg({'id': 'count'}).reset_index()
@@ -431,7 +454,7 @@ class InvestorView(BaseView):
                 values='Listings',
                 names='Host Size',
                 title='👥 Market Share by Host Size',
-                color_discrete_sequence=['#58a6ff', '#3fb950', '#d29922', '#f85149']
+                color_discrete_sequence=pie_colors
             )
         fig_portfolio.update_layout(height=400)
         self.host_portfolio.set_figure(fig_portfolio, is_dark)
@@ -443,14 +466,8 @@ class InvestorView(BaseView):
         }).reset_index()
         saturation.columns = ['Borough', 'Listings', 'Avg Availability']
         
-        # Borough colors for consistent styling
-        borough_colors = {
-            'Manhattan': '#f59e0b',
-            'Brooklyn': '#ef4444', 
-            'Queens': '#10b981',
-            'Bronx': '#3b82f6',
-            'Staten Island': '#8b5cf6'
-        }
+        # Grayscale-aware borough colors
+        borough_colors = self._get_borough_colors()
         
         fig_saturation = go.Figure()
         
@@ -494,7 +511,18 @@ class InvestorView(BaseView):
                 y=1.02,
                 xanchor='center',
                 x=0.5
-            )
+            ),
+            annotations=[
+                dict(
+                    text='<i>💡 Investment Guide: High listings + Low availability = High demand (Ideal)<br>'
+                         'High listings + High availability = Oversaturated market (Risk)</i>',
+                    xref='paper', yref='paper',
+                    x=0.5, y=-0.15,
+                    showarrow=False,
+                    font=dict(size=10, color='#8b949e'),
+                    xanchor='center'
+                )
+            ]
         )
         self.market_saturation.set_figure(fig_saturation, is_dark, show_colorbar=False)
         
@@ -505,6 +533,9 @@ class InvestorView(BaseView):
         }).reset_index()
         yield_data['yield_ratio'] = yield_data['estimated_revenue'] / (yield_data['price'] * 365) * 100
         
+        # Grayscale-aware color scale
+        yield_colorscale = [[0,'#f0f0f0'],[0.5,'#808080'],[1,'#1a1a1a']] if self.theme_manager.grayscale_mode else [[0,'#fff7ed'],[0.5,'#f97316'],[1,'#9a3412']]
+        
         fig_yield = px.bar(
             yield_data.sort_values('yield_ratio', ascending=True),
             x='yield_ratio',
@@ -512,7 +543,7 @@ class InvestorView(BaseView):
             orientation='h',
             title='📈 Investment Yield by Borough (%)',
             color='yield_ratio',
-            color_continuous_scale='Oranges',
+            color_continuous_scale=yield_colorscale,
             labels={'yield_ratio': 'Yield (%)', 'neighbourhood_group': 'Borough'},
             text='yield_ratio'
         )
@@ -533,7 +564,8 @@ class InvestorView(BaseView):
             'estimated_revenue': 'mean'
         }).reset_index()
         segments.columns = ['Segment', 'Count', 'Avg Price', 'Med Price', 'Std Dev', 'Avg Revenue']
-        segments['ROI Score'] = segments['Avg Revenue'] / (segments['Avg Price'] * 365) * 100
+        # ROI Score: actual revenue as % of max potential (price × 365)
+        segments['ROI Score'] = (segments['Avg Revenue'] / (segments['Avg Price'] * 365) * 100).round(1)
         
         self.segment_table.setRowCount(len(segments))
         for i, row in segments.iterrows():
@@ -558,3 +590,37 @@ class InvestorView(BaseView):
                 self.hosts_table.setItem(idx, 4, QTableWidgetItem(f"${est_rev:,.0f}"))
         else:
             self.hosts_table.setRowCount(0)
+    
+    def _get_borough_colors(self):
+        """Get borough colors based on grayscale mode"""
+        if self.theme_manager.grayscale_mode:
+            return {
+                'Manhattan': '#1a1a1a',
+                'Brooklyn': '#404040',
+                'Queens': '#666666',
+                'Bronx': '#8c8c8c',
+                'Staten Island': '#b3b3b3'
+            }
+        else:
+            return {
+                'Manhattan': '#f59e0b',
+                'Brooklyn': '#3b82f6',
+                'Queens': '#10b981',
+                'Bronx': '#ef4444',
+                'Staten Island': '#8b5cf6'
+            }
+    
+    def _get_room_type_colors(self):
+        """Get room type colors based on grayscale mode"""
+        if self.theme_manager.grayscale_mode:
+            return {
+                'Entire home/apt': '#1a1a1a',
+                'Private room': '#666666',
+                'Shared room': '#b3b3b3'
+            }
+        else:
+            return {
+                'Entire home/apt': '#3b82f6',
+                'Private room': '#10b981',
+                'Shared room': '#f59e0b'
+            }

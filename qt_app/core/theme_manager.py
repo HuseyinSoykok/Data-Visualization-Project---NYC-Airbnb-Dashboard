@@ -137,11 +137,18 @@ class ThemeManager(QObject):
     def __init__(self):
         super().__init__()
         self.current_theme = 'dark'
+        self.grayscale_mode = False  # Grayscale mode for accessibility testing
         self._stylesheet_cache = {}
     
     def get_color(self, color_name: str) -> str:
-        """Get color value for current theme"""
-        return self.THEMES[self.current_theme].get(color_name, '#ffffff')
+        """Get color value for current theme (with grayscale applied if enabled)"""
+        color = self.THEMES[self.current_theme].get(color_name, '#ffffff')
+        
+        # Apply grayscale if enabled
+        if self.grayscale_mode:
+            color = self.convert_to_grayscale(color)
+        
+        return color
     
     def get_colors(self) -> dict:
         """Get all colors for current theme"""
@@ -659,3 +666,44 @@ class ThemeManager(QObject):
             max-height: 1px;
         }}
         '''
+    
+    def toggle_grayscale_mode(self) -> bool:
+        """Toggle grayscale mode for accessibility testing"""
+        self.grayscale_mode = not self.grayscale_mode
+        self.theme_changed.emit(self.current_theme)
+        return self.grayscale_mode
+    
+    def enable_grayscale_mode(self, enabled: bool = True):
+        """Enable or disable grayscale mode"""
+        self.grayscale_mode = enabled
+        self.theme_changed.emit(self.current_theme)
+    
+    def convert_to_grayscale(self, color: str) -> str:
+        """Convert a color to grayscale while maintaining luminance"""
+        # Remove # if present
+        color = color.lstrip('#')
+        
+        # Handle short hex colors
+        if len(color) == 3:
+            color = ''.join([c*2 for c in color])
+        
+        # Convert to RGB
+        try:
+            r = int(color[0:2], 16)
+            g = int(color[2:4], 16)
+            b = int(color[4:6], 16)
+            
+            # Calculate luminance (perceived brightness)
+            gray = int(0.299 * r + 0.587 * g + 0.114 * b)
+            
+            # Return as hex
+            return f'#{gray:02x}{gray:02x}{gray:02x}'
+        except:
+            return color
+    
+    def get_color_with_grayscale(self, color_name: str) -> str:
+        """Get color with grayscale mode applied if enabled"""
+        color = self.get_color(color_name)
+        if self.grayscale_mode:
+            return self.convert_to_grayscale(color)
+        return color

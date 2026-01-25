@@ -21,6 +21,7 @@ A professional, modern desktop application for analyzing NYC Airbnb data with an
 
 ### 🎨 Modern UI/UX
 - **Dark/Light Theme**: Smooth theme switching with modern color palettes
+- **Grayscale Mode**: Accessibility feature for color-blind users (Ctrl+G)
 - **Responsive Design**: Adapts to different screen sizes
 - **Smooth Animations**: Fade, slide, and pulse effects for better UX
 - **Collapsible Sidebar**: Space-efficient navigation
@@ -42,11 +43,13 @@ A professional, modern desktop application for analyzing NYC Airbnb data with an
    - Monitor compliance issues
    - Identify potential violations
    - Policy impact analysis
+   - Heatmap intensity control for violation density analysis
 
 4. **🏨 Competitor View** (Maria)
    - Hotel industry competitive analysis
    - Market positioning insights
    - Pricing strategy comparison
+   - Competition heatmap with adjustable intensity
 
 5. **📰 Journalist View** (Michael)
    - Discover data stories
@@ -236,6 +239,30 @@ python -m qt_app.main
 - Toggle to show only commercial operations
 - Commercial = High availability (>300 days) or many listings (>5)
 
+### View-Specific Controls
+
+#### Regulator View
+- **Heatmap Intensity Slider**: Adjust violation density visualization
+  - Lower values (5-10): Sharp, focused hotspots
+  - Higher values (30-50): Broad area patterns
+  - Positioned right below the violation heatmap for immediate feedback
+
+#### Competitor View
+- **Heatmap Intensity Slider**: Adjust competition density visualization
+  - Lower values (5-10): Sharp competition hotspots
+  - Higher values (30-50): Broad competition patterns
+  - Positioned right below the competition heatmap for immediate feedback
+
+### Accessibility Features
+
+#### Grayscale Mode
+- Press `Ctrl+G` or use the toggle button in the sidebar
+- Converts all visualizations to grayscale
+- Helps users with color vision deficiencies
+- Stat cards remain colorful for quick visual reference
+- All charts become grayscale-adaptive
+- Works in both dark and light themes
+
 ### Interacting with Charts
 
 **All Charts Support:**
@@ -276,7 +303,8 @@ python -m qt_app.main
 | `3` | Switch to Regulator View |
 | `4` | Switch to Competitor View |
 | `5` | Switch to Journalist View |
-| `Ctrl+D` | Toggle Dark/Light mode |
+| `Ctrl+D` | Toggle Dark/Light theme |
+| `Ctrl+G` | Toggle grayscale mode (accessibility) |
 | `Ctrl+R` | Refresh current view |
 | `Ctrl+E` | Export filtered data |
 | `Ctrl+F` | Toggle filter panel |
@@ -723,6 +751,15 @@ To request features:
 
 ## 🔄 Changelog
 
+### Version 2.1.0 (2026-01-24)
+- ✨ Added grayscale accessibility mode (Ctrl+G)
+- 🎛️ Added heatmap intensity sliders (Regulator & Competitor views)
+- 🎨 Improved filter panel organization
+- 🐛 Fixed duplicate filter controls
+- 📍 Optimized slider positioning for better UX
+- ♿ Enhanced accessibility features
+- 🎨 All 48 charts now support grayscale mode
+
 ### Version 2.0.0 (2026-01-22)
 - ✨ Complete rewrite using PySide6
 - 🎨 Modern dark/light theme system
@@ -768,4 +805,4 @@ To request features:
 
 **Made with ❤️ by Huseyin Soykok**
 
-*Last Updated: January 22, 2026*
+*Last Updated: January 24, 2026*

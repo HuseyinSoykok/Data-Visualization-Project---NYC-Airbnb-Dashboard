@@ -27,16 +27,20 @@ class TravelerView(BaseView):
             "the best value for your money. Compare prices across boroughs and room types."
         )
         
-        # Stat cards
-        self.total_card = self.add_stat_card("🏠", "0", "Available Listings", "#58a6ff")
-        self.avg_price_card = self.add_stat_card("💰", "$0", "Average Price/Night", "#3fb950")
-        self.budget_card = self.add_stat_card("🎯", "0", "Budget Options (<$100)", "#d29922")
-        self.best_value_card = self.add_stat_card("⭐", "-", "Best Value Borough", "#a371f7")
+        # Add data quality indicators
+        self.add_data_quality_indicators()
+        
+        # Stat cards - colors adapt to grayscale mode
+        card_colors = self._get_stat_card_colors()
+        self.total_card = self.add_stat_card("🏠", "0", "Available Listings", card_colors[0])
+        self.avg_price_card = self.add_stat_card("💰", "$0", "Average Price/Night", card_colors[1])
+        self.budget_card = self.add_stat_card("🎯", "0", "Budget Options (<$200)", card_colors[2])
+        self.best_value_card = self.add_stat_card("⭐", "-", "Best Value Borough", card_colors[3])
         
         # Task info card
         task_card = self.create_info_card(
             "🎯 Hüseyin's Task",
-            "Discover budget-friendly ($100-150), popular (100+ reviews) 'Entire home/apt' listings on the map.\n\n"
+            "Discover budget-friendly ($100-200), popular (100+ reviews) 'Entire home/apt' listings on the map.\n\n"
             "💡 Tip: Large green dots = Low price + High popularity = Best Value!"
         )
         self.content_layout.addWidget(task_card)
@@ -77,8 +81,8 @@ class TravelerView(BaseView):
         
         # Legend items
         legend_items = [
-            ("●", "#2ecc71", "Budget-Friendly (< $100)"),
-            ("●", "#f39c12", "Mid-Range ($100-$300)"),
+            ("●", "#2ecc71", "Budget-Friendly (< $200)"),
+            ("●", "#f39c12", "Mid-Range ($200-$300)"),
             ("●", "#e74c3c", "Premium (> $300)"),
         ]
         
@@ -148,12 +152,12 @@ class TravelerView(BaseView):
         
         # Table
         self.value_table = QTableWidget()
-        self.value_table.setColumnCount(6)
+        self.value_table.setColumnCount(7)
         self.value_table.setHorizontalHeaderLabels([
-            'Listing Name', 'Neighbourhood', 'Price', 'Reviews', 'Type', 'Value Score'
+            'Listing Name', 'Neighbourhood', 'Price', 'Reviews', 'Min Nights', 'Type', 'Value Score'
         ])
         self.value_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        for i in range(1, 6):
+        for i in range(1, 7):
             self.value_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
         self.value_table.setMinimumHeight(300)
         self._update_table_theme(True)
@@ -254,7 +258,7 @@ class TravelerView(BaseView):
         self.total_card.set_value(f"{stats['total_listings']:,}")
         self.avg_price_card.set_value(f"${stats['avg_price']:.0f}")
         
-        budget_count = len(df[df['price'] < 100])
+        budget_count = len(df[df['price'] < 200])
         self.budget_card.set_value(f"{budget_count:,}")
         
         # Find best value borough (lowest avg price)
@@ -266,7 +270,12 @@ class TravelerView(BaseView):
         map_data = self.data_manager.get_map_data(3000)
         
         # Color scale: green (low) -> yellow (mid) -> red (high)
-        PRICE_COLORSCALE = [[0, '#2ecc71'], [0.5, '#f39c12'], [1, '#e74c3c']]
+        if self.theme_manager.grayscale_mode:
+            # Grayscale color scale
+            PRICE_COLORSCALE = [[0, '#e0e0e0'], [0.5, '#808080'], [1, '#1a1a1a']]
+        else:
+            # Normal color scale
+            PRICE_COLORSCALE = [[0, '#2ecc71'], [0.5, '#f39c12'], [1, '#e74c3c']]
         
         fig_map = px.scatter_mapbox(
             map_data,
@@ -320,6 +329,10 @@ class TravelerView(BaseView):
             )
         )
         self.price_map.set_figure(fig_map, is_dark)
+        self.price_map.set_accessible_info(
+            "Price Map",
+            "Interactive map showing NYC Airbnb listings colored by price. Green indicates budget-friendly options, red indicates expensive listings. Marker size represents popularity based on number of reviews."
+        )
         
         # Price Distribution
         price_data = df[df['price'] <= 500]['price']
@@ -328,11 +341,16 @@ class TravelerView(BaseView):
             mean_price = price_data.mean()
             median_price = price_data.median()
             
+            # Grayscale-aware colors
+            hist_color = '#808080' if self.theme_manager.grayscale_mode else '#58a6ff'
+            mean_color = '#606060' if self.theme_manager.grayscale_mode else '#f85149'
+            median_color = '#a0a0a0' if self.theme_manager.grayscale_mode else '#3fb950'
+            
             fig_price = go.Figure()
             fig_price.add_trace(go.Histogram(
                 x=price_data,
                 nbinsx=50,
-                marker_color='#58a6ff',
+                marker_color=hist_color,
                 opacity=0.85,
                 name='Listings'
             ))
@@ -340,7 +358,7 @@ class TravelerView(BaseView):
             fig_price.add_vline(
                 x=mean_price,
                 line_dash="dash",
-                line_color="#f85149",
+                line_color=mean_color,
                 annotation_text=f"Mean: ${mean_price:.0f}",
                 annotation_position="top right"
             )
@@ -348,7 +366,7 @@ class TravelerView(BaseView):
             fig_price.add_vline(
                 x=median_price,
                 line_dash="dot",
-                line_color="#3fb950",
+                line_color=median_color,
                 annotation_text=f"Median: ${median_price:.0f}",
                 annotation_position="top left"
             )
@@ -396,13 +414,24 @@ class TravelerView(BaseView):
         
         if len(borough_stats) > 0:
             # Consistent borough color mapping
-            borough_color_map = {
-                'Manhattan': '#f59e0b',
-                'Brooklyn': '#ef4444',
-                'Queens': '#10b981',
-                'Bronx': '#3b82f6',
-                'Staten Island': '#8b5cf6'
-            }
+            if self.theme_manager.grayscale_mode:
+                # Grayscale mode: use different shades of gray
+                borough_color_map = {
+                    'Manhattan': '#1a1a1a',
+                    'Brooklyn': '#404040',
+                    'Queens': '#666666',
+                    'Bronx': '#8c8c8c',
+                    'Staten Island': '#b3b3b3'
+                }
+            else:
+                # Normal color mode
+                borough_color_map = {
+                    'Manhattan': '#f59e0b',
+                    'Brooklyn': '#ef4444',
+                    'Queens': '#10b981',
+                    'Bronx': '#3b82f6',
+                    'Staten Island': '#8b5cf6'
+                }
             
             fig_borough = px.bar(
                 borough_stats,
@@ -422,6 +451,10 @@ class TravelerView(BaseView):
                 yaxis=dict(tickformat='$,.0f')
             )
             self.borough_chart.set_figure(fig_borough, is_dark, show_colorbar=False)
+            self.borough_chart.set_accessible_info(
+                "Borough Price Comparison",
+                "Bar chart comparing average nightly prices across NYC's five boroughs. Each bar is color-coded by borough and shows the exact price value."
+            )
         else:
             fig_borough = go.Figure()
             fig_borough.add_annotation(
@@ -449,12 +482,15 @@ class TravelerView(BaseView):
         room_stats.columns = ['Room Type', 'Avg Price', 'Count']
         
         if len(room_stats) > 0:
+            # Grayscale-aware colors
+            pie_colors = ['#e0e0e0', '#a0a0a0', '#606060'] if self.theme_manager.grayscale_mode else ['#58a6ff', '#3fb950', '#d29922']
+            
             fig_room = px.pie(
                 room_stats,
                 values='Count',
                 names='Room Type',
                 title='🛏️ Room Type Distribution',
-                color_discrete_sequence=['#58a6ff', '#3fb950', '#d29922']
+                color_discrete_sequence=pie_colors
             )
             fig_room.update_layout(
                 height=380,
@@ -480,15 +516,16 @@ class TravelerView(BaseView):
             self.room_type_chart.set_figure(fig_room, is_dark)
         
         # Value Score Chart (Reviews per Dollar)
-        if 'value_score' in df.columns:
-            value_by_borough = df.groupby('neighbourhood_group')['value_score'].mean().reset_index()
-        else:
-            df_value = df.copy()
-            df_value['value_score'] = df_value['number_of_reviews'] / (df_value['price'] + 1)
-            value_by_borough = df_value.groupby('neighbourhood_group')['value_score'].mean().reset_index()
+        # Always recalculate for consistency with improved formula
+        df_value = df.copy()
+        df_value['value_score'] = df_value['number_of_reviews'] / (df_value['price'] + 1)
+        value_by_borough = df_value.groupby('neighbourhood_group')['value_score'].mean().reset_index()
         value_by_borough.columns = ['Borough', 'Value Score']
         
         if len(value_by_borough) > 0:
+            # Grayscale-aware color scale
+            value_colorscale = [[0,'#f0f0f0'],[0.5,'#808080'],[1,'#1a1a1a']] if self.theme_manager.grayscale_mode else [[0,'#f0fdf4'],[0.5,'#22c55e'],[1,'#166534']]
+            
             fig_value = px.bar(
                 value_by_borough.sort_values('Value Score', ascending=True),
                 x='Value Score',
@@ -496,7 +533,7 @@ class TravelerView(BaseView):
                 orientation='h',
                 title='⭐ Value Score by Borough (Reviews/Price)',
                 color='Value Score',
-                color_continuous_scale='Greens'
+                color_continuous_scale=value_colorscale
             )
             fig_value.update_layout(
                 height=380,
@@ -542,7 +579,23 @@ class TravelerView(BaseView):
             self.value_table.setItem(i, 2, price_item)
             
             self.value_table.setItem(i, 3, QTableWidgetItem(f"{row['number_of_reviews']:,.0f}"))
-            self.value_table.setItem(i, 4, QTableWidgetItem(str(row['room_type'])))
+            
+            # Add minimum nights column
+            min_nights = int(row.get('minimum_nights', 1))
+            min_nights_item = QTableWidgetItem(f"{min_nights}")
+            # Highlight short stays (good for travelers)
+            if min_nights <= 3:
+                min_nights_item.setForeground(Qt.darkGreen if is_dark else Qt.green)
+            self.value_table.setItem(i, 4, min_nights_item)
+            
+            self.value_table.setItem(i, 5, QTableWidgetItem(str(row['room_type'])))
             
             score_item = QTableWidgetItem(f"{row['value_score']:.1f}")
-            self.value_table.setItem(i, 5, score_item)
+            self.value_table.setItem(i, 6, score_item)
+    
+    def _get_stat_card_colors(self):
+        """Get stat card colors based on grayscale mode"""
+        if self.theme_manager.grayscale_mode:
+            return ["#e0e0e0", "#c0c0c0", "#a0a0a0", "#808080"]
+        else:
+            return ["#58a6ff", "#3fb950", "#d29922", "#a371f7"]

@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QComboBox, QCheckBox, QSlider, QFrame, QScrollArea,
     QSizePolicy, QSpacerItem, QGroupBox, QSpinBox
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from typing import Dict, List
 
 from qt_app.widgets.range_slider import ProfessionalRangeSlider
@@ -286,6 +286,13 @@ class FilterPanel(QWidget):
         self.setObjectName("filterPanel")
         self._is_dark = True
         self._sections = []
+        
+        # Debounce timer for filter changes
+        self._filter_debounce_timer = QTimer()
+        self._filter_debounce_timer.setSingleShot(True)
+        self._filter_debounce_timer.setInterval(300)  # 300ms debounce
+        self._filter_debounce_timer.timeout.connect(self._emit_filters)
+        
         self._setup_ui()
     
     def _setup_ui(self):
@@ -756,7 +763,16 @@ class FilterPanel(QWidget):
         self._update_active_filters_display()
     
     def _on_filter_change(self, *args):
+        """Handle filter change with debouncing"""
         self._update_active_filters_display()
+        # Restart debounce timer
+        self._filter_debounce_timer.stop()
+        self._filter_debounce_timer.start()
+    
+    def _emit_filters(self):
+        """Emit filters after debounce period"""
+        filters = self.get_filters()
+        self.filters_changed.emit(filters)
     
     def _update_active_filters_display(self):
         """Update the active filters display"""
@@ -799,10 +815,6 @@ class FilterPanel(QWidget):
         else:
             self.active_filters_label.setText("No filters active")
             self.active_filters_label.setStyleSheet("font-size: 11px; color: #8b949e; background: transparent;")
-    
-    def _emit_filters(self):
-        filters = self.get_filters()
-        self.filters_changed.emit(filters)
     
     def _on_export_click(self):
         """Handle export button click"""

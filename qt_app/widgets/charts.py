@@ -20,6 +20,10 @@ class PlotlyWidget(QWidget):
         super().__init__(parent)
         self._setup_ui()
         self._current_fig = None
+        
+        # Accessibility support
+        self.setAccessibleName("Interactive Chart")
+        self.setAccessibleDescription("Data visualization chart with interactive features")
     
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -52,6 +56,9 @@ class PlotlyWidget(QWidget):
         self._current_fig = fig
         self._dark_mode = dark_mode
         self._show_colorbar = show_colorbar
+        
+        # Handle long labels - rotate if needed
+        self._optimize_labels(fig)
         
         # Theme colors
         if dark_mode:
@@ -170,6 +177,52 @@ class PlotlyWidget(QWidget):
         # Generate HTML
         html = self._generate_html(fig, dark_mode)
         self.web_view.setHtml(html)
+    
+    def _optimize_labels(self, fig: go.Figure):
+        """Optimize labels for readability - handle long text and many categories"""
+        # Check x-axis labels length
+        for trace in fig.data:
+            if hasattr(trace, 'x') and trace.x is not None:
+                x_labels = [str(x) for x in trace.x]
+                max_label_length = max([len(label) for label in x_labels]) if x_labels else 0
+                num_categories = len(set(x_labels))
+                
+                # If labels are long or many categories, rotate them
+                if max_label_length > 15 or num_categories > 10:
+                    fig.update_xaxes(
+                        tickangle=-45,
+                        tickmode='auto',
+                        nticks=20  # Limit number of ticks for many categories
+                    )
+                
+                # Truncate very long labels
+                if max_label_length > 30:
+                    truncated = [label[:27] + '...' if len(label) > 30 else label 
+                               for label in x_labels]
+                    if hasattr(trace, 'x'):
+                        trace.x = truncated
+                        # Store full labels in hovertext
+                        if not hasattr(trace, 'hovertext') or trace.hovertext is None:
+                            trace.hovertext = x_labels
+        
+        # Handle y-axis labels
+        for trace in fig.data:
+            if hasattr(trace, 'y') and trace.y is not None and not all(isinstance(y, (int, float)) for y in trace.y):
+                y_labels = [str(y) for y in trace.y]
+                max_label_length = max([len(label) for label in y_labels]) if y_labels else 0
+                
+                if max_label_length > 20:
+                    truncated = [label[:17] + '...' if len(label) > 20 else label 
+                               for label in y_labels]
+                    if hasattr(trace, 'y'):
+                        trace.y = truncated
+                        if not hasattr(trace, 'hovertext') or trace.hovertext is None:
+                            trace.hovertext = y_labels
+    
+    def set_accessible_info(self, name: str, description: str):
+        """Set accessibility information for the chart"""
+        self.setAccessibleName(name)
+        self.setAccessibleDescription(description)
     
     def _generate_html(self, fig: go.Figure, dark_mode: bool = True) -> str:
         """Generate HTML content for the chart with proper theme styling"""

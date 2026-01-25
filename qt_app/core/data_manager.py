@@ -249,12 +249,27 @@ class DataManager(QObject):
         return host_stats.nlargest(n, 'listing_count')
     
     def get_top_value_listings(self, n: int = 10) -> pd.DataFrame:
-        """Get top value listings by value score (reviews/price)"""
-        if self.filtered_df is None or 'value_score' not in self.filtered_df.columns:
+        """Get top value listings by value score (reviews/price)
+        
+        Filters for practical stays (<=7 nights minimum) and calculates
+        normalized value score for better comparison.
+        """
+        if self.filtered_df is None:
             return pd.DataFrame()
         
-        return self.filtered_df.nlargest(n, 'value_score')[
-            ['name', 'neighbourhood', 'price', 'number_of_reviews', 'room_type', 'value_score']
+        # Filter for practical travel stays (minimum_nights <= 7)
+        df_value = self.filtered_df[self.filtered_df['minimum_nights'] <= 7].copy()
+        
+        if len(df_value) == 0:
+            return pd.DataFrame()
+        
+        # Calculate normalized value score if not exists
+        if 'value_score' not in df_value.columns or True:  # Always recalculate for consistency
+            # Method 1: Simple reviews per dollar (better for travelers)
+            df_value['value_score'] = df_value['number_of_reviews'] / (df_value['price'] + 1)
+        
+        return df_value.nlargest(n, 'value_score')[
+            ['name', 'neighbourhood', 'price', 'number_of_reviews', 'room_type', 'value_score', 'minimum_nights']
         ]
     
     def get_commercial_stats(self) -> Dict:
@@ -368,3 +383,88 @@ class DataManager(QObject):
     def get_host_categories(self) -> List[str]:
         """Get list of host categories"""
         return ['all', 'Single (1)', 'Small (2-5)', 'Medium (6-10)', 'Mega (10+)']
+    
+    def get_missing_data_stats(self) -> Dict:
+        """Get statistics about missing data in the dataset"""
+        if self.filtered_df is None:
+            return {}
+        
+        total_rows = len(self.filtered_df)
+        missing_stats = {}
+        
+        # Check key columns for missing data
+        key_columns = ['name', 'host_name', 'last_review', 'reviews_per_month']
+        
+        for col in key_columns:
+            if col in self.filtered_df.columns:
+                missing_count = self.filtered_df[col].isnull().sum()
+                if missing_count > 0:
+                    missing_stats[col] = {
+                        'count': int(missing_count),
+                        'percentage': round((missing_count / total_rows) * 100, 1)
+                    }
+        
+        return missing_stats
+    
+    def get_data_quality_score(self) -> Dict:
+        """Calculate data quality metrics"""
+        if self.filtered_df is None:
+            return {'score': 0, 'details': {}}
+        
+        total_rows = len(self.filtered_df)
+        total_cells = total_rows * len(self.filtered_df.columns)
+        missing_cells = self.filtered_df.isnull().sum().sum()
+        
+        completeness = ((total_cells - missing_cells) / total_cells) * 100
+        
+        # Check for outliers (already filtered, so should be minimal)
+        price_outliers = ((self.filtered_df['price'] < 10) | 
+                         (self.filtered_df['price'] > 1000)).sum()
+        
+        return {
+            'score': round(completeness, 1),
+            'total_records': total_rows,
+            'missing_cells': int(missing_cells),
+            'completeness': round(completeness, 1),
+            'outliers_filtered': int(price_outliers)
+        }
+    
+    def get_uncertainty_indicators(self) -> Dict:
+        """Get uncertainty indicators for predictions and estimates"""
+        if self.filtered_df is None:
+            return {}
+        
+        # Calculate confidence intervals for key metrics
+        import numpy as np
+        
+        # Price statistics with confidence intervals
+        prices = self.filtered_df['price'].values
+        price_mean = np.mean(prices)
+        price_std = np.std(prices)
+        price_ci_95 = 1.96 * (price_std / np.sqrt(len(prices)))
+        
+        # Revenue estimates with uncertainty
+        if 'estimated_annual_revenue' in self.filtered_df.columns:
+            revenues = self.filtered_df['estimated_annual_revenue'].values
+            revenue_mean = np.mean(revenues)
+            revenue_std = np.std(revenues)
+            revenue_ci_95 = 1.96 * (revenue_std / np.sqrt(len(revenues)))
+        else:
+            revenue_mean = 0
+            revenue_ci_95 = 0
+        
+        return {
+            'price': {
+                'mean': round(price_mean, 2),
+                'ci_lower': round(price_mean - price_ci_95, 2),
+                'ci_upper': round(price_mean + price_ci_95, 2),
+                'margin_of_error': round(price_ci_95, 2)
+            },
+            'revenue': {
+                'mean': round(revenue_mean, 2),
+                'ci_lower': round(revenue_mean - revenue_ci_95, 2),
+                'ci_upper': round(revenue_mean + revenue_ci_95, 2),
+                'margin_of_error': round(revenue_ci_95, 2)
+            },
+            'note': '95% confidence interval'
+        }

@@ -34,7 +34,7 @@ class JournalistView(BaseView):
         )
         self.content_layout.addWidget(task_card)
         
-        # Stat cards
+        # Stat cards - always colorful (not affected by grayscale mode)
         self.total_card = self.add_stat_card("📊", "0", "Total Listings Analyzed", "#58a6ff")
         self.hosts_card = self.add_stat_card("👥", "0", "Unique Hosts", "#3fb950")
         self.concentration_card = self.add_stat_card("📈", "0%", "Top 1% Host Control", "#f85149")
@@ -181,14 +181,8 @@ class JournalistView(BaseView):
         # Overview Map
         map_data = self.data_manager.get_map_data(4000)
         
-        # Consistent borough color mapping
-        borough_color_map = {
-            'Manhattan': '#f59e0b',
-            'Brooklyn': '#ef4444',
-            'Queens': '#10b981',
-            'Bronx': '#3b82f6',
-            'Staten Island': '#8b5cf6'
-        }
+        # Grayscale-aware borough colors
+        borough_color_map = self._get_borough_colors()
         
         fig_map = px.scatter_mapbox(
             map_data,
@@ -242,12 +236,13 @@ class JournalistView(BaseView):
         labels = ['1', '2', '3-4', '5-9', '10-19', '20-49', '50-99', '100+']
         host_listing_counts['bin'] = pd.cut(host_listing_counts['listing_count'], bins=bins, labels=labels, right=False)
         bin_counts = host_listing_counts['bin'].value_counts().reindex(labels).fillna(0)
+        marker_color = '#808080' if self.theme_manager.grayscale_mode else '#58a6ff'
         
         fig_histogram = go.Figure()
         fig_histogram.add_trace(go.Bar(
             x=labels,
             y=bin_counts.values,
-            marker_color='#58a6ff',
+            marker_color=marker_color,
             text=[f'{int(val):,}' for val in bin_counts.values],
             textposition='auto',
             textfont=dict(size=11)
@@ -263,6 +258,8 @@ class JournalistView(BaseView):
         self.host_histogram.set_figure(fig_histogram, is_dark, show_colorbar=False)
         
         # Host Category Pie Chart
+        pie_colors = ['#e0e0e0', '#c0c0c0', '#a0a0a0', '#808080'] if self.theme_manager.grayscale_mode else ['#58a6ff', '#3fb950', '#d29922', '#f85149']
+        
         if 'host_category' in df.columns:
             host_stats = self.data_manager.get_host_category_stats()
             fig_pie = px.pie(
@@ -270,7 +267,7 @@ class JournalistView(BaseView):
                 values='count',
                 names='host_category',
                 title='👥 Host Categories Distribution',
-                color_discrete_sequence=['#58a6ff', '#3fb950', '#d29922', '#f85149']
+                color_discrete_sequence=pie_colors
             )
         else:
             # Fallback to host_size
@@ -281,7 +278,7 @@ class JournalistView(BaseView):
                 values='Count',
                 names='Category',
                 title='👥 Host Size Distribution',
-                color_discrete_sequence=['#58a6ff', '#3fb950', '#d29922', '#f85149']
+                color_discrete_sequence=pie_colors
             )
         fig_pie.update_layout(height=400)
         fig_pie.update_traces(textposition='inside', textinfo='percent+label')
@@ -294,22 +291,27 @@ class JournalistView(BaseView):
         sample_size = min(1000, len(host_listings))
         indices = [int(i * len(host_listings) / sample_size) for i in range(sample_size)]
         
+        # Grayscale-aware colors
+        actual_color = '#606060' if self.theme_manager.grayscale_mode else '#f85149'
+        equality_color = '#a0a0a0' if self.theme_manager.grayscale_mode else '#3fb950'
+        fill_color = 'rgba(96, 96, 96, 0.2)' if self.theme_manager.grayscale_mode else 'rgba(248, 81, 73, 0.2)'
+        
         fig_inequality = go.Figure()
         fig_inequality.add_trace(go.Scatter(
             x=[i/len(host_listings)*100 for i in indices],
             y=[cumulative_listings.iloc[i]/total_listings*100 for i in indices],
             mode='lines',
             name='Actual Distribution',
-            line=dict(color='#f85149', width=3),
+            line=dict(color=actual_color, width=3),
             fill='tozeroy',
-            fillcolor='rgba(248, 81, 73, 0.2)'
+            fillcolor=fill_color
         ))
         fig_inequality.add_trace(go.Scatter(
             x=[0, 100],
             y=[0, 100],
             mode='lines',
             name='Perfect Equality',
-            line=dict(color='#3fb950', dash='dash', width=2)
+            line=dict(color=equality_color, dash='dash', width=2)
         ))
         fig_inequality.update_layout(
             title='📈 Host Concentration: Who Controls the Market?',
@@ -342,7 +344,8 @@ class JournalistView(BaseView):
                 labels={'review_month': 'Month', 'count': 'Reviews'},
                 markers=True
             )
-            fig_trend.update_traces(line_color='#58a6ff', line_width=3)
+            line_color = '#808080' if self.theme_manager.grayscale_mode else '#58a6ff'
+            fig_trend.update_traces(line_color=line_color, line_width=3)
             fig_trend.update_layout(
                 height=400,
                 xaxis_title='Review Month',
@@ -383,25 +386,41 @@ class JournalistView(BaseView):
         }).reset_index()
         borough_profile.columns = ['Borough', 'Mean Price', 'Median Price', 'Listings', 'Avg Reviews', 'Avg Availability']
         
+        # Grayscale-aware colors
+        price_color = '#808080' if self.theme_manager.grayscale_mode else '#58a6ff'
+        reviews_color = '#404040' if self.theme_manager.grayscale_mode else '#3fb950'
+        
+        # Borough Profile - Radar chart showing multiple dimensions
         fig_borough = go.Figure()
         fig_borough.add_trace(go.Scatterpolar(
             r=[borough_profile[borough_profile['Borough'] == b]['Mean Price'].values[0] for b in borough_profile['Borough']],
             theta=borough_profile['Borough'],
             fill='toself',
             name='Mean Price',
-            line_color='#58a6ff'
+            line_color=price_color
         ))
         fig_borough.add_trace(go.Scatterpolar(
             r=[borough_profile[borough_profile['Borough'] == b]['Avg Reviews'].values[0] * 5 for b in borough_profile['Borough']],
             theta=borough_profile['Borough'],
             fill='toself',
             name='Avg Reviews (scaled)',
-            line_color='#3fb950'
+            line_color=reviews_color
         ))
         fig_borough.update_layout(
             title='🏙️ Borough Personality Profiles',
             polar=dict(radialaxis=dict(visible=True)),
-            height=400
+            height=400,
+            annotations=[
+                dict(
+                    text='<i>💡 Multi-dimensional borough analysis: Price levels and review activity combined<br>'
+                         'Larger area = More expensive with higher engagement</i>',
+                    xref='paper', yref='paper',
+                    x=0.5, y=-0.1,
+                    showarrow=False,
+                    font=dict(size=10, color='#8b949e'),
+                    xanchor='center'
+                )
+            ]
         )
         self.neighbourhood_story.set_figure(fig_borough, is_dark, show_colorbar=False)
         
@@ -410,11 +429,15 @@ class JournalistView(BaseView):
         q25 = df_price_filtered['price'].quantile(0.25)
         q75 = df_price_filtered['price'].quantile(0.75)
         
+        # Grayscale-aware borough colors
+        borough_colors = self._get_borough_colors()
+        
         fig_price_ineq = px.violin(
             df_price_filtered,
             x='neighbourhood_group',
             y='price',
             color='neighbourhood_group',
+            color_discrete_map=borough_colors,
             title='💰 Price Inequality Across Boroughs',
             box=True,
             points='outliers'
@@ -461,4 +484,22 @@ class JournalistView(BaseView):
         for i, (metric, value, context) in enumerate(data_points):
             self.data_table.setItem(i, 0, QTableWidgetItem(metric))
             self.data_table.setItem(i, 1, QTableWidgetItem(value))
-            self.data_table.setItem(i, 2, QTableWidgetItem(context))
+            self.data_table.setItem(i, 2, QTableWidgetItem(context))    
+    def _get_borough_colors(self):
+        """Get borough colors based on grayscale mode"""
+        if self.theme_manager.grayscale_mode:
+            return {
+                'Manhattan': '#1a1a1a',
+                'Brooklyn': '#404040',
+                'Queens': '#666666',
+                'Bronx': '#8c8c8c',
+                'Staten Island': '#b3b3b3'
+            }
+        else:
+            return {
+                'Manhattan': '#f59e0b',
+                'Brooklyn': '#ef4444',
+                'Queens': '#10b981',
+                'Bronx': '#3b82f6',
+                'Staten Island': '#8b5cf6'
+            }

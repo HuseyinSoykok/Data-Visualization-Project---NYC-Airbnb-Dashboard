@@ -96,6 +96,175 @@ class StatCard(ModernCard):
         self.value_label.setText(value)
 
 
+class MissingDataBadge(QWidget):
+    """Badge to indicate missing data in visualizations"""
+    
+    def __init__(self, count: int, percentage: float, column: str = "", parent=None):
+        super().__init__(parent)
+        self.count = count
+        self.percentage = percentage
+        self.column = column
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(6)
+        
+        # Warning icon
+        icon_label = QLabel("⚠️")
+        icon_label.setStyleSheet("font-size: 14px; background: transparent;")
+        layout.addWidget(icon_label)
+        
+        # Text
+        text = f"{self.count} missing"
+        if self.column:
+            text = f"{self.column}: {text} ({self.percentage}%)"
+        else:
+            text = f"{text} ({self.percentage}%)"
+        
+        text_label = QLabel(text)
+        text_label.setStyleSheet("""
+            QLabel {
+                color: #d29922;
+                font-size: 11px;
+                font-weight: 500;
+                background: transparent;
+            }
+        """)
+        layout.addWidget(text_label)
+        
+        # Style the badge
+        self.setStyleSheet("""
+            QWidget {
+                background-color: rgba(210, 153, 34, 0.15);
+                border: 1px solid rgba(210, 153, 34, 0.3);
+                border-radius: 8px;
+            }
+        """)
+        self.setMaximumWidth(250)
+
+
+class UncertaintyIndicator(QWidget):
+    """Indicator showing confidence intervals and uncertainty"""
+    
+    def __init__(self, value: float, ci_lower: float, ci_upper: float, 
+                 label: str = "", unit: str = "", parent=None):
+        super().__init__(parent)
+        self.value = value
+        self.ci_lower = ci_lower
+        self.ci_upper = ci_upper
+        self.label = label
+        self.unit = unit
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(4)
+        
+        # Label
+        if self.label:
+            label_widget = QLabel(self.label)
+            label_widget.setStyleSheet("""
+                QLabel {
+                    color: #8b949e;
+                    font-size: 11px;
+                    background: transparent;
+                }
+            """)
+            layout.addWidget(label_widget)
+        
+        # Value with confidence interval
+        margin = abs(self.value - self.ci_lower)
+        value_text = f"{self.unit}{self.value:.1f} ± {self.unit}{margin:.1f}"
+        
+        value_label = QLabel(value_text)
+        value_label.setStyleSheet("""
+            QLabel {
+                color: #e6edf3;
+                font-size: 14px;
+                font-weight: 600;
+                background: transparent;
+            }
+        """)
+        layout.addWidget(value_label)
+        
+        # Range display
+        range_text = f"95% CI: {self.unit}{self.ci_lower:.1f} - {self.unit}{self.ci_upper:.1f}"
+        range_label = QLabel(range_text)
+        range_label.setStyleSheet("""
+            QLabel {
+                color: #6e7681;
+                font-size: 10px;
+                font-style: italic;
+                background: transparent;
+            }
+        """)
+        layout.addWidget(range_label)
+        
+        # Style the container
+        self.setStyleSheet("""
+            QWidget {
+                background-color: rgba(88, 166, 255, 0.1);
+                border: 1px solid rgba(88, 166, 255, 0.3);
+                border-radius: 8px;
+            }
+        """)
+
+
+class DataQualityBadge(QWidget):
+    """Badge showing data quality score"""
+    
+    def __init__(self, score: float, parent=None):
+        super().__init__(parent)
+        self.score = score
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(6)
+        
+        # Quality icon based on score
+        if self.score >= 95:
+            icon = "✅"
+            color = "#3fb950"
+        elif self.score >= 85:
+            icon = "✓"
+            color = "#58a6ff"
+        elif self.score >= 70:
+            icon = "⚠️"
+            color = "#d29922"
+        else:
+            icon = "❌"
+            color = "#f85149"
+        
+        icon_label = QLabel(icon)
+        icon_label.setStyleSheet("font-size: 14px; background: transparent;")
+        layout.addWidget(icon_label)
+        
+        text_label = QLabel(f"Data Quality: {self.score:.1f}%")
+        text_label.setStyleSheet(f"""
+            QLabel {{
+                color: {color};
+                font-size: 11px;
+                font-weight: 600;
+                background: transparent;
+            }}
+        """)
+        layout.addWidget(text_label)
+        
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {color}22;
+                border: 1px solid {color}44;
+                border-radius: 8px;
+            }}
+        """)
+        self.setMaximumWidth(180)
+
+
 class IconButton(QPushButton):
     """Modern icon button with hover effects"""
     

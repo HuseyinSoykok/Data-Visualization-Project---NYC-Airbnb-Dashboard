@@ -243,6 +243,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+R"), self, self._refresh_current_view)
         QShortcut(QKeySequence("Ctrl+E"), self, self._export_data)
         QShortcut(QKeySequence("Ctrl+D"), self, self._toggle_theme)
+        QShortcut(QKeySequence("Ctrl+G"), self, self._toggle_grayscale)  # New: Grayscale mode
         QShortcut(QKeySequence("F11"), self, self._toggle_fullscreen)
         QShortcut(QKeySequence("?"), self, self._show_help)
         QShortcut(QKeySequence("Escape"), self, self._handle_escape)
@@ -251,6 +252,7 @@ class MainWindow(QMainWindow):
         """Connect all signals"""
         self.sidebar.navigation_changed.connect(self._on_navigation_changed)
         self.sidebar.theme_toggle.toggled.connect(self._on_theme_toggle)
+        self.sidebar.grayscale_toggle.toggled.connect(self._on_grayscale_toggle)
         self.filter_panel.filters_changed.connect(self._on_filters_changed)
         self.filter_panel.export_requested.connect(self._export_data)
         self.data_manager.data_loaded.connect(self._on_data_loaded)
@@ -492,6 +494,19 @@ class MainWindow(QMainWindow):
         bg_color = "#0d1117" if is_dark else "#f6f8fa"
         self.stack.setStyleSheet(f"background-color: {bg_color};")
     
+    def _on_grayscale_toggle(self, enabled: bool):
+        """Handle grayscale toggle from sidebar"""
+        self.theme_manager.toggle_grayscale_mode()
+        
+        # Update status bar
+        mode_text = "ON" if enabled else "OFF"
+        self.status_bar.showMessage(f"Grayscale Mode: {mode_text}", 2000)
+        
+        # Refresh current view to update colors
+        current_view = self.stack.currentWidget()
+        if current_view and hasattr(current_view, 'refresh'):
+            current_view.refresh()
+    
     def _on_theme_changed(self, theme: str):
         """Handle theme change from theme manager"""
         is_dark = theme == 'dark'
@@ -570,12 +585,21 @@ class MainWindow(QMainWindow):
             "⌨️ Keyboard Shortcuts:\n"
             "1-5: Switch between views\n"
             "Ctrl+D: Toggle dark/light mode\n"
+            "Ctrl+G: Toggle grayscale mode (accessibility)\n"
             "Ctrl+R: Refresh current view\n"
             "Ctrl+E: Export filtered data\n"
             "F11: Toggle fullscreen\n"
             "Escape: Exit fullscreen\n\n"
             "📁 Data: Inside Airbnb NYC 2019"
         )
+    
+    def _toggle_grayscale(self):
+        """Toggle grayscale mode for accessibility testing"""
+        enabled = self.theme_manager.toggle_grayscale_mode()
+        mode_text = "Enabled" if enabled else "Disabled"
+        self.status_bar.showMessage(f"Grayscale mode {mode_text}", 3000)
+        # Refresh current view to apply changes
+        self._refresh_current_view()
     
     def _toggle_fullscreen(self):
         """Toggle fullscreen mode"""

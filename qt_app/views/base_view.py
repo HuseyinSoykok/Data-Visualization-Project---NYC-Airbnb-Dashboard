@@ -292,3 +292,35 @@ class BaseView(QWidget):
         card.content_label = content_label
         
         return card
+    
+    def add_data_quality_indicators(self):
+        """Add data quality and missing data indicators to the view"""
+        from qt_app.widgets.custom_widgets import DataQualityBadge, MissingDataBadge
+        
+        # Get data quality info
+        quality_info = self.data_manager.get_data_quality_score()
+        missing_info = self.data_manager.get_missing_data_stats()
+        
+        # Create indicators container
+        indicators_container = QWidget()
+        indicators_layout = QHBoxLayout(indicators_container)
+        indicators_layout.setContentsMargins(0, 0, 0, 0)
+        indicators_layout.setSpacing(8)
+        
+        # Add data quality badge
+        if quality_info and 'score' in quality_info:
+            quality_badge = DataQualityBadge(quality_info['score'])
+            indicators_layout.addWidget(quality_badge)
+        
+        # Add missing data badges
+        if missing_info:
+            for col, stats in missing_info.items():
+                badge = MissingDataBadge(
+                    stats['count'], 
+                    stats['percentage'], 
+                    col.replace('_', ' ').title()
+                )
+                indicators_layout.addWidget(badge)
+        
+        indicators_layout.addStretch()
+        self.content_layout.addWidget(indicators_container)
