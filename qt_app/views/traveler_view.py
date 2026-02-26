@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 
 from qt_app.views.base_view import BaseView
 from qt_app.widgets.custom_widgets import ModernCard, Badge
@@ -159,7 +160,7 @@ class TravelerView(BaseView):
         self.value_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         for i in range(1, 7):
             self.value_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
-        self.value_table.setMinimumHeight(300)
+        self.value_table.setMinimumHeight(350)
         self._update_table_theme(True)
         table_layout.addWidget(self.value_table)
         
@@ -167,6 +168,9 @@ class TravelerView(BaseView):
     
     def _update_table_theme(self, is_dark: bool):
         """Update table theme colors"""
+        # Store default text color for items without custom foreground
+        self.table_default_color = "#e6edf3" if is_dark else "#1f2328"
+        
         if is_dark:
             self.value_table.setStyleSheet("""
                 QTableWidget {
@@ -179,7 +183,6 @@ class TravelerView(BaseView):
                 QTableWidget::item {
                     padding: 8px;
                     border-bottom: 1px solid #21262d;
-                    color: #e6edf3;
                 }
                 QHeaderView::section {
                     background-color: #161b22;
@@ -201,7 +204,6 @@ class TravelerView(BaseView):
                 QTableWidget::item {
                     padding: 8px;
                     border-bottom: 1px solid #d0d7de;
-                    color: #1f2328;
                 }
                 QHeaderView::section {
                     background-color: #f6f8fa;
@@ -474,7 +476,7 @@ class TravelerView(BaseView):
             )
             self.borough_chart.set_figure(fig_borough, is_dark)
         
-        # Room Type Distribution
+        # Room Type Distribution (Bar Chart)
         room_stats = df.groupby('room_type').agg({
             'price': 'mean',
             'id': 'count'
@@ -482,22 +484,52 @@ class TravelerView(BaseView):
         room_stats.columns = ['Room Type', 'Avg Price', 'Count']
         
         if len(room_stats) > 0:
-            # Grayscale-aware colors
-            pie_colors = ['#e0e0e0', '#a0a0a0', '#606060'] if self.theme_manager.grayscale_mode else ['#58a6ff', '#3fb950', '#d29922']
+            # Calculate percentages for display
+            total_count = room_stats['Count'].sum()
+            room_stats['Percentage'] = (room_stats['Count'] / total_count * 100).round(1)
             
-            fig_room = px.pie(
+            # Sort by count for better visualization
+            room_stats = room_stats.sort_values('Count', ascending=False)
+            
+            # Grayscale-aware colors - map to room types for consistency
+            if self.theme_manager.grayscale_mode:
+                room_type_colors = {
+                    'Entire home/apt': '#1a1a1a',
+                    'Private room': '#666666',
+                    'Shared room': '#b3b3b3'
+                }
+            else:
+                room_type_colors = {
+                    'Entire home/apt': '#3b82f6',
+                    'Private room': '#10b981',
+                    'Shared room': '#f59e0b'
+                }
+            
+            fig_room = px.bar(
                 room_stats,
-                values='Count',
-                names='Room Type',
+                x='Room Type',
+                y='Count',
+                color='Room Type',
+                color_discrete_map=room_type_colors,
                 title='🛏️ Room Type Distribution',
-                color_discrete_sequence=pie_colors
+                text='Count'
             )
+            
+            # Update traces to show count and percentage
+            fig_room.update_traces(
+                texttemplate='%{text:,}<br>(%{customdata:.1f}%)',
+                textposition='outside',
+                customdata=room_stats['Percentage']
+            )
+            
             fig_room.update_layout(
                 height=380,
-                title='🛏️ Room Type Distribution (%)',
+                showlegend=False,
+                xaxis_title='Room Type',
+                yaxis_title='Number of Listings',
+                yaxis=dict(tickformat=',d')
             )
-            fig_room.update_traces(textposition='inside', textinfo='percent+label')
-            self.room_type_chart.set_figure(fig_room, is_dark)
+            self.room_type_chart.set_figure(fig_room, is_dark, show_colorbar=False)
         else:
             fig_room = go.Figure()
             fig_room.add_annotation(
@@ -563,34 +595,64 @@ class TravelerView(BaseView):
             self.value_chart.set_figure(fig_value, is_dark)
         
         # Update Top Value Listings Table
+        # Clear table first to ensure fresh data
+        self.value_table.clearContents()
+        
+        # Get top value listings from currently filtered data
         top_value = self.data_manager.get_top_value_listings(10)
         self.value_table.setRowCount(len(top_value))
+        
+        # Define colors for highlighting
+        if is_dark:
+            green_color = QColor('#2ea043')  # GitHub green for dark mode
+            default_color = QColor('#e6edf3')  # Default text for dark mode
+        else:
+            green_color = QColor('#1a7f37')  # GitHub green for light mode
+            default_color = QColor('#1f2328')  # Default text for light mode
         
         for i, (_, row) in enumerate(top_value.iterrows()):
             name = str(row['name'])
             if len(name) > 35:
                 name = name[:35] + '...'
             
-            self.value_table.setItem(i, 0, QTableWidgetItem(name))
-            self.value_table.setItem(i, 1, QTableWidgetItem(str(row['neighbourhood'])))
+            # Column 0: Name
+            name_item = QTableWidgetItem(name)
+            name_item.setForeground(default_color)
+            self.value_table.setItem(i, 0, name_item)
             
+            # Column 1: Neighbourhood
+            neighbourhood_item = QTableWidgetItem(str(row['neighbourhood']))
+            neighbourhood_item.setForeground(default_color)
+            self.value_table.setItem(i, 1, neighbourhood_item)
+            
+            # Column 2: Price (always green for budget-friendly)
             price_item = QTableWidgetItem(f"${row['price']:.0f}")
-            price_item.setForeground(Qt.darkGreen if is_dark else Qt.green)
+            price_item.setForeground(green_color)
             self.value_table.setItem(i, 2, price_item)
             
-            self.value_table.setItem(i, 3, QTableWidgetItem(f"{row['number_of_reviews']:,.0f}"))
+            # Column 3: Reviews
+            reviews_item = QTableWidgetItem(f"{row['number_of_reviews']:,.0f}")
+            reviews_item.setForeground(default_color)
+            self.value_table.setItem(i, 3, reviews_item)
             
-            # Add minimum nights column
+            # Column 4: Minimum nights (highlight if <= 3)
             min_nights = int(row.get('minimum_nights', 1))
             min_nights_item = QTableWidgetItem(f"{min_nights}")
             # Highlight short stays (good for travelers)
             if min_nights <= 3:
-                min_nights_item.setForeground(Qt.darkGreen if is_dark else Qt.green)
+                min_nights_item.setForeground(green_color)
+            else:
+                min_nights_item.setForeground(default_color)
             self.value_table.setItem(i, 4, min_nights_item)
             
-            self.value_table.setItem(i, 5, QTableWidgetItem(str(row['room_type'])))
+            # Column 5: Room Type
+            room_type_item = QTableWidgetItem(str(row['room_type']))
+            room_type_item.setForeground(default_color)
+            self.value_table.setItem(i, 5, room_type_item)
             
+            # Column 6: Value Score
             score_item = QTableWidgetItem(f"{row['value_score']:.1f}")
+            score_item.setForeground(default_color)
             self.value_table.setItem(i, 6, score_item)
     
     def _get_stat_card_colors(self):

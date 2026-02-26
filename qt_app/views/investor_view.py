@@ -235,7 +235,7 @@ class InvestorView(BaseView):
             lon='longitude',
             color='estimated_revenue',
             size='estimated_revenue',
-            size_max=30,
+            size_max=15,
             color_continuous_scale=REVENUE_COLORSCALE,
             hover_name='name',
             hover_data={
@@ -252,8 +252,8 @@ class InvestorView(BaseView):
             zoom=10,
             center=dict(lat=40.7128, lon=-74.0060)
         )
-        # Set minimum marker size for better visibility
-        fig_map.update_traces(marker=dict(sizemin=8))
+        # Set minimum marker size and transparency for better readability
+        fig_map.update_traces(marker=dict(sizemin=3, opacity=0.7))
         fig_map.update_layout(
             mapbox_style='carto-darkmatter' if is_dark else 'carto-positron',
             height=700,
@@ -296,7 +296,7 @@ class InvestorView(BaseView):
                 color='neighbourhood_group',
                 box=True,
                 points='outliers',
-                title='🎻 Price Distribution by Borough (Violin + Box)',
+                title='Price Distribution by Borough (Violin + Box)',
                 labels={'neighbourhood_group': 'Borough', 'price': 'Price ($)'},
                 color_discrete_map=borough_colors
             )
@@ -325,7 +325,7 @@ class InvestorView(BaseView):
                 align="center"
             )
             fig_violin_borough.update_layout(
-                title='🎻 Price Distribution by Borough (Violin + Box)',
+                title='Price Distribution by Borough (Violin + Box)',
                 height=400,
                 showlegend=False,
                 xaxis=dict(visible=False),
@@ -345,7 +345,7 @@ class InvestorView(BaseView):
                 color='room_type',
                 box=True,
                 points='outliers',
-                title='🎻 Price Distribution by Room Type',
+                title='Price Distribution by Room Type',
                 labels={'room_type': 'Room Type', 'price': 'Price ($)'},
                 color_discrete_map=room_colors
             )
@@ -374,7 +374,7 @@ class InvestorView(BaseView):
                 align="center"
             )
             fig_violin_room.update_layout(
-                title='🎻 Price Distribution by Room Type',
+                title='Price Distribution by Room Type',
                 height=400,
                 showlegend=False,
                 xaxis=dict(visible=False),
@@ -434,30 +434,122 @@ class InvestorView(BaseView):
             )
             self.roi_chart.set_figure(fig_roi, is_dark, show_colorbar=False)
         
-        # Host Portfolio Analysis
-        pie_colors = ['#e0e0e0', '#c0c0c0', '#a0a0a0', '#808080'] if self.theme_manager.grayscale_mode else ['#58a6ff', '#3fb950', '#d29922', '#f85149']
-        
-        if 'host_category' in df.columns:
-            host_stats = self.data_manager.get_host_category_stats()
-            fig_portfolio = px.pie(
+        # Host Portfolio Analysis - Bar Chart with Enhanced Information
+        if 'host_category' in df_analysis.columns:
+            # Get detailed host statistics using df_analysis (has estimated_revenue column)
+            host_stats = df_analysis.groupby('host_category').agg({
+                'id': 'count',
+                'estimated_revenue': 'sum',
+                'price': 'mean'
+            }).reset_index()
+            host_stats.columns = ['Category', 'Listings', 'Total Revenue', 'Avg Price']
+            
+            # Calculate percentages
+            total_listings = host_stats['Listings'].sum()
+            total_revenue = host_stats['Total Revenue'].sum()
+            host_stats['Listings %'] = (host_stats['Listings'] / total_listings * 100).round(1)
+            host_stats['Revenue %'] = (host_stats['Total Revenue'] / total_revenue * 100).round(1)
+            
+            # Sort by number of listings descending
+            host_stats = host_stats.sort_values('Listings', ascending=False)
+            
+            # Category color mapping
+            if self.theme_manager.grayscale_mode:
+                category_colors = {
+                    'Single (1)': '#e0e0e0',
+                    'Small (2-5)': '#a0a0a0',
+                    'Medium (6-10)': '#606060',
+                    'Mega (10+)': '#1a1a1a'
+                }
+            else:
+                category_colors = {
+                    'Single (1)': '#58a6ff',
+                    'Small (2-5)': '#3fb950',
+                    'Medium (6-10)': '#d29922',
+                    'Mega (10+)': '#f85149'
+                }
+            
+            fig_portfolio = px.bar(
                 host_stats,
-                values='count',
-                names='host_category',
-                title='👥 Market Share by Host Category',
-                color_discrete_sequence=pie_colors
+                x='Category',
+                y='Listings',
+                color='Category',
+                color_discrete_map=category_colors,
+                title='👥 Market Distribution by Host Category',
+                text='Listings'
+            )
+            
+            # Add count and percentage to text
+            fig_portfolio.update_traces(
+                texttemplate='%{text:,}<br>(%{customdata[0]:.1f}%)<br>$%{customdata[1]:,.0f}',
+                textposition='outside',
+                hovertemplate='<b>%{x}</b><br>' +
+                             'Listings: %{y:,} (%{customdata[0]:.1f}%)<br>' +
+                             'Total Revenue: $%{customdata[1]:,.0f} (%{customdata[2]:.1f}%)<br>' +
+                             'Avg Price: $%{customdata[3]:.0f}<br>' +
+                             '<extra></extra>',
+                customdata=host_stats[['Listings %', 'Total Revenue', 'Revenue %', 'Avg Price']]
+            )
+            
+            fig_portfolio.update_layout(
+                height=400,
+                showlegend=False,
+                xaxis_title='Host Category',
+                yaxis_title='Number of Listings',
+                yaxis=dict(tickformat=',d'),
+                annotations=[
+                    dict(
+                        text='<i>💡 Format: Count (% of total) | Total Revenue<br>' +
+                             'Mega hosts (10+ listings) often dominate revenue despite fewer total listings</i>',
+                        xref='paper', yref='paper',
+                        x=0.5, y=-0.18,
+                        showarrow=False,
+                        font=dict(size=10, color='#8b949e'),
+                        xanchor='center'
+                    )
+                ]
             )
         else:
-            host_sizes = df.groupby('host_size').agg({'id': 'count'}).reset_index()
-            host_sizes.columns = ['Host Size', 'Listings']
-            fig_portfolio = px.pie(
+            # Fallback using host_size with df_analysis (has estimated_revenue column)
+            host_sizes = df_analysis.groupby('host_size').agg({
+                'id': 'count',
+                'estimated_revenue': 'sum'
+            }).reset_index()
+            host_sizes.columns = ['Host Size', 'Listings', 'Total Revenue']
+            
+            # Calculate percentages
+            total_listings = host_sizes['Listings'].sum()
+            host_sizes['Percentage'] = (host_sizes['Listings'] / total_listings * 100).round(1)
+            host_sizes = host_sizes.sort_values('Listings', ascending=False)
+            
+            # Grayscale-aware colors
+            bar_colors = ['#e0e0e0', '#a0a0a0', '#606060', '#1a1a1a'] if self.theme_manager.grayscale_mode else ['#58a6ff', '#3fb950', '#d29922', '#f85149']
+            
+            fig_portfolio = px.bar(
                 host_sizes,
-                values='Listings',
-                names='Host Size',
-                title='👥 Market Share by Host Size',
-                color_discrete_sequence=pie_colors
+                x='Host Size',
+                y='Listings',
+                color='Host Size',
+                color_discrete_sequence=bar_colors,
+                title='👥 Market Distribution by Host Size',
+                text='Listings'
             )
-        fig_portfolio.update_layout(height=400)
-        self.host_portfolio.set_figure(fig_portfolio, is_dark)
+            
+            fig_portfolio.update_traces(
+                texttemplate='%{text:,}<br>(%{customdata:.1f}%)',
+                textposition='outside',
+                customdata=host_sizes['Percentage']
+            )
+            
+            fig_portfolio.update_layout(
+                height=400,
+                showlegend=False,
+                xaxis_title='Host Size',
+                yaxis_title='Number of Listings',
+                yaxis=dict(tickformat=',d')
+            )
+        
+        self.host_portfolio.set_figure(fig_portfolio, is_dark, show_colorbar=False)
         
         # Market Saturation
         saturation = df.groupby('neighbourhood_group').agg({
