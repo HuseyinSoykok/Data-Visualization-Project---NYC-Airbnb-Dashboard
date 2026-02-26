@@ -1,0 +1,717 @@
+\documentclass[12pt,a4paper]{article}
+
+%% ─── Packages ────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{parskip}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{microtype}
+\usepackage{caption}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{longtable}
+\captionsetup{font=small, labelfont=bf, justification=justified}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+
+\begin{document}
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  TITLE PAGE
+%% ═══════════════════════════════════════════════════════════════════════════════
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\LARGE\bfseries A Geographical and Economic Analysis\\[0.4em]
+   of the New York City Airbnb Market\\[0.4em]
+   --- Final Visualisation Report ---\par}
+  \vspace{1.5cm}
+  {\large Visualisation Project --- Milestone 4 Final Report\par}
+  \vspace{1cm}
+  {\large Hüseyin Soykök\quad|\quad Student ID: 3804308\quad|\quad Group 24\par}
+  \vspace{0.5cm}
+  {\large February 2026\par}
+  \vspace{2cm}
+  \begin{abstract}
+    \noindent
+    This report documents the design, implementation, and evaluation of an interactive
+    multi-perspective dashboard for the New York City Airbnb Open Data (2019) dataset
+    (47,924 listings, 16 attributes). The dashboard is built in Python with
+    PySide6 and Plotly, and provides five persona-driven views: \emph{Traveler},
+    \emph{Investor}, \emph{Journalist}, \emph{Competitor}, and \emph{Regulator}.
+    Each view encodes a specific analytical task through carefully chosen visual
+    idioms --- geographical symbol maps, violin plots, bar charts, histograms, and
+    scatter plots --- all linked through a shared filter panel. The system supports
+    three rendering themes (Dark, Light, Grayscale) to address accessibility needs.
+    This report describes the domain situation, data abstraction, visual encodings,
+    implemented interactions, design rationale, and key findings derived from each
+    perspective.
+  \end{abstract}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  1. INTRODUCTION
+%% ═══════════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+
+The short-term rental market in New York City represents one of the world's most
+competitive and geographically complex accommodation ecosystems. The NYC Airbnb
+Open Data (2019) dataset, published on Kaggle under CC0 1.0 (Public Domain), contains
+48,895 rows and 16 attributes capturing listing location, price, room type, host
+information, review counts, and availability, constituting a rich substrate for
+multi-perspective data visualisation analysis \cite{dgomonov2019}.
+
+The overarching goal of this project is to transform raw tabular data into an
+interactive, persona-driven dashboard that allows five distinct user archetypes ---
+a budget traveller, a property investor, a data journalist, a hotel competitor,
+and a city regulator --- to answer their specific analytical questions through
+guided exploration. Following the Munzner What--Why--How framework \cite{munzner2014},
+each view is designed to match its user's task abstraction (discover, compare,
+identify, locate) with an appropriate visual idiom (symbol map, violin plot,
+bar chart, histogram) \cite{brehmer2013}.
+
+The implemented system consists of a PySide6 desktop application \cite{pyside6}
+with Plotly-generated interactive figures \cite{plotly2015} embedded in
+\texttt{QWebEngineView} widgets. A shared filter panel propagates user-selected
+constraints (borough, room type, price range, minimum reviews, maximum nights)
+to all active views simultaneously, enabling coordinated multi-view exploration
+\cite{heer2012}.
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  2. DATASET
+%% ═══════════════════════════════════════════════════════════════════════════════
+\section{Dataset Description}
+
+\subsection{Source and License}
+The dataset is the \emph{New York City Airbnb Open Data (2019)}, sourced from
+\url{https://www.kaggle.com/datasets/dgomonov/new-york-city-airbnb-open-data},
+published by user \texttt{dgomonov} \cite{dgomonov2019}. The license is CC0 1.0
+Public Domain Dedication, permitting free academic and commercial use without
+restriction.
+
+\subsection{Schema and Attribute Roles}
+
+Table~\ref{tab:schema} summarises the 16 attributes, their semantic types,
+measurement units, and value ranges.
+
+\begin{table}[H]
+  \centering
+  \caption{Dataset schema: attribute roles, types, units, and value ranges.}
+  \label{tab:schema}
+  \small
+  \begin{tabular}{llllp{4.5cm}}
+    \toprule
+    \textbf{Attribute} & \textbf{Role} & \textbf{Type} & \textbf{Unit} & \textbf{Range / Domain} \\
+    \midrule
+    \texttt{id}                          & Key       & Quantitative   & Unique ID  & 48,895 unique integers \\
+    \texttt{name}                        & Attribute & Categorical     & Text       & $\sim$47,900 unique strings \\
+    \texttt{host\_id}                    & Key       & Quantitative   & Unique ID  & 37,457 unique hosts \\
+    \texttt{host\_name}                  & Attribute & Categorical     & Text       & $\sim$11,400 unique strings \\
+    \texttt{neighbourhood\_group}        & Attribute & Categorical (Spatial) & ---  & 5 boroughs \\
+    \texttt{neighbourhood}               & Attribute & Categorical (Spatial) & ---  & 221 neighbourhoods \\
+    \texttt{latitude}                    & Attribute & Quantitative (Spatial) & Degree & [40.499, 40.913] \\
+    \texttt{longitude}                   & Attribute & Quantitative (Spatial) & Degree & [$-$74.244, $-$73.712] \\
+    \texttt{room\_type}                  & Attribute & Categorical     & ---        & 3 categories \\
+    \texttt{price}                       & Attribute & Quantitative   & USD        & [0, 10,000] (contains outliers) \\
+    \texttt{minimum\_nights}             & Attribute & Quantitative   & Nights     & [1, 1,250] (contains outliers) \\
+    \texttt{number\_of\_reviews}         & Attribute & Quantitative   & Count      & [0, 629] \\
+    \texttt{last\_review}                & Attribute & Temporal       & Date       & 2011-03-28 to 2019-07-08 \\
+    \texttt{reviews\_per\_month}         & Attribute & Quantitative   & Count/Month & [0.01, 58.5] \\
+    \texttt{calculated\_host\_listings\_count} & Attribute & Quantitative & Count & [1, 327] \\
+    \texttt{availability\_365}           & Attribute & Quantitative   & Days       & [0, 365] \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Data Quality and Preprocessing}
+
+The dataset presents three notable quality challenges. First, \textbf{extreme outliers}
+in \texttt{price} (\$0 and up to \$10,000) and \texttt{minimum\_nights} (up to
+1,250 nights) distort statistical summaries and break visualisation scales. All price
+visualisations are therefore filtered to \$10--\$1,000 prior to rendering, and
+minimum-nights analysis is capped at 30 nights unless otherwise stated. Second,
+approximately 10,052 rows ($\approx$20\%) have null values in \texttt{last\_review}
+and \texttt{reviews\_per\_month}; these are not random errors but are structurally
+tied to listings with zero reviews and are treated as \emph{inapplicable} rather
+than \emph{missing} data, excluded only from review-based calculations. Third, the
+dataset is a \textbf{static 2019 snapshot} \cite{dgomonov2019}, predating the
+COVID-19 pandemic and the subsequent structural shift in NYC's rental market
+\cite{zervas2017}; all findings must be interpreted within this temporal context.
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  3. SYSTEM ARCHITECTURE
+%% ═══════════════════════════════════════════════════════════════════════════════
+\section{System Architecture and Interaction Design}
+
+\subsection{Technology Stack}
+The dashboard is implemented as a \textbf{PySide6} desktop application \cite{pyside6}.
+Interactive charts are generated with \textbf{Plotly} (Express and Graph Objects
+APIs) \cite{plotly2015} and rendered inside \texttt{QWebEngineView} widgets.
+Data wrangling is performed with \textbf{Pandas} \cite{pandas}. The application
+follows an MVC-like architecture: a central \texttt{FilterState} object holds the
+current filter selections; each view registers as a listener and re-renders its
+charts whenever the filter state changes.
+
+\subsection{Filter Panel}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.65\textwidth]{figures/filter_panel.jpg}
+  \caption{The shared Filter Panel, displayed as a collapsible sidebar.
+    The panel provides six interactive controls: (1) Borough checkboxes for
+    spatial scoping by \texttt{neighbourhood\_group}; (2) a Neighbourhood dropdown
+    for fine-grained filtering to a single \texttt{neighbourhood}; (3) Room Type
+    checkboxes (\emph{Entire home/apt}, \emph{Private room}, \emph{Shared room});
+    (4) dual Price Range sliders (\$100--\$150 shown, constraining \texttt{price});
+    (5) a Minimum Reviews slider (here $\geq 0$); and (6) a Max Stay Requirement
+    slider (here $\leq 30$ nights, constraining \texttt{minimum\_nights}).
+    The ``Active:'' badge strip at the top reflects the current filter state as
+    readable tokens. All six controls propagate simultaneously to every open
+    perspective view, implementing a coordinated brushing-and-linking interaction
+    pattern \cite{heer2012} without any additional user action.}
+  \label{fig:filter_panel}
+\end{figure}
+
+\subsection{Theme System}
+
+The application supports three rendering themes to address varying use-case and
+accessibility requirements. Figure~\ref{fig:themes} illustrates all three modes
+on the Traveler view.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/theme_dark.jpg}
+    \caption{Dark Mode. Background \texttt{\#0d1117}, foreground text
+      \texttt{\#e6edf3}. All Plotly chart papers and plot backgrounds are
+      overridden to match the dark theme. Recommended for extended use in
+      low-light environments.}
+    \label{fig:theme_dark}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/them_light.jpg}
+    \caption{Light Mode. White background (\texttt{\#ffffff}), dark text
+      (\texttt{\#1f2328}). Chart backgrounds switch to white; all axis labels
+      and grid lines adapt accordingly. Optimised for daytime use and
+      presentation/printing contexts.}
+    \label{fig:theme_light}
+  \end{subfigure}
+  \vspace{0.5em}
+  \begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/traveller_grayscale.jpg}
+    \caption{Grayscale Mode. All hue-based colours are desaturated to a
+      luminance-ranked grayscale palette \cite{moreland2009}. This mode
+      guarantees readability for the approximately 8\% of male users with
+      colour-vision deficiency \cite{wcag21}. Stat cards retain colour even
+      in this mode. Charts rely on position, length, and pattern encoding
+      rather than hue, so no information is lost.}
+    \label{fig:theme_grayscale}
+  \end{subfigure}
+  \caption{Three rendering themes of the dashboard (Traveler View shown). The
+    active theme is toggled via the sidebar's \emph{Grayscale} and \emph{Dark Mode}
+    switches.}
+  \label{fig:themes}
+\end{figure}
+
+\subsection{Application Overview}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/app_overview.jpg}
+  \caption{Full application overview showing the Traveler View in Dark Mode with
+    the Brooklyn and Queens boroughs selected and a \$100--\$150 price range active.
+    The left sidebar contains the perspective switcher (Traveler, Investor,
+    Regulator, Competitor, Journalist) and tool section. The top-right status bar
+    displays real-time aggregate statistics: 472 listings, average price \$125,
+    445 hosts. The main canvas renders the value-focused map in the top half and
+    the price histogram alongside the borough bar chart in the lower half, all
+    updating instantaneously when any filter slider or checkbox is adjusted.}
+  \label{fig:app_overview}
+\end{figure}
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  4. TRAVELER VIEW
+%% ═══════════════════════════════════════════════════════════════════════════════
+\section{Traveler View: Finding Value-for-Money Accommodation}
+
+\subsection{Persona and Task}
+
+The Traveler perspective is designed for \textbf{Hüseyin}, a budget-conscious tourist
+planning a 5-day visit to NYC. His budget is firm at \$100--\$150 per night; he
+requires a minimum of 100 reviews as a proxy for listing quality and safety; and
+he prefers \emph{Entire home/apt} listings. He is unfamiliar with NYC geography
+and therefore needs a spatial overview before he can select concrete options.
+
+His primary task is a \textbf{Discover / Locate} task \cite{brehmer2013}: given
+strict filter criteria (price, reviews, room type), find the geographic clusters
+of ``value gem'' listings. Secondary tasks include \textbf{Compare} (which borough
+offers the best value score) and \textbf{Identify} (specific listings worth
+booking).
+
+\subsection{Value-Focused Listing Map}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/traveler_map.jpg}
+  \caption{Value-Focused Listing Map (Scatter Mapbox, \texttt{px.scatter\_mapbox}).
+    Each dot represents a single Airbnb listing. Two visual channels encode the
+    two dimensions that matter most to the traveller simultaneously:
+    \textbf{colour} encodes \texttt{price} via a sequential green--yellow--red
+    diverging scale (green = \$100 [cheapest], red = \$150 [upper budget limit]);
+    \textbf{dot size} encodes \texttt{number\_of\_reviews} (larger dot = more
+    reviewed = more popular). This dual encoding means that the ``ideal'' listing
+    from Hüseyin's perspective is a \emph{large green dot} --- affordable and
+    highly vetted \cite{ware2004}. The map is shown here with Brooklyn and Queens
+    selected, a \$100--\$150 price range, and $\geq$100 reviews active: 472
+    qualifying listings remain. A hover tooltip surfaces the listing name, price,
+    room type, neighbourhood, availability, and minimum nights. Geometric zoom
+    and pan allow street-level inspection. The colour scale legend is fixed at
+    the right to ensure stable colour--price mapping across filter changes.}
+  \label{fig:traveler_map}
+\end{figure}
+
+\subsection{Price Distribution Histogram}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{figures/traveler_price_histogram.jpg}
+  \caption{Price Distribution Histogram (\texttt{px.histogram}, bin width \$5,
+    capped at $\leq$\$500). The x-axis shows \texttt{price} per night in USD;
+    the y-axis shows absolute listing count. Two vertical reference lines are
+    superimposed: a \textbf{green dashed} line for the median (\$125) and an
+    \textbf{orange dashed} line for the mean (\$125), which here coincide due
+    to the symmetric price distribution enforced by the active filters. The
+    histogram reveals a bimodal pattern within the \$100--\$155 range: a dominant
+    peak at \$100 (2,080 listings), a secondary concentration around
+    \$120--\$125 (1,165 listings), and a notable spike at \$150 (2,020 listings)
+    attributable to hosts pricing at the round-number ceiling \cite{tufte1983}.
+    Bins between \$130 and \$145 show lower counts (300--640 listings), confirming
+    that Hüseyin's budget range is realistic and supply-rich at both the lower
+    and upper ends.}
+  \label{fig:traveler_histogram}
+\end{figure}
+
+\subsection{Average Price by Borough Bar Chart}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{figures/traveler_brough_bar.jpg}
+  \caption{Average Price by Borough (vertical bar chart, \texttt{px.bar}).
+    Each of the five boroughs is represented by a distinct bar, colour-coded
+    categorically (Bronx: blue; Brooklyn: red; Manhattan: orange; Queens: green;
+    Staten Island: purple). The y-axis encodes average price per night (USD),
+    with bars annotated with exact dollar values. Manhattan leads at \$126/night,
+    followed by Brooklyn (\$124), Queens (\$122), Bronx (\$121), and Staten
+    Island (\$119). The inter-borough price spread is only \$7, indicating that
+    once Hüseyin applies his budget constraints, all boroughs offer comparable
+    average prices. The length channel is the primary encoding, consistent with
+    Cleveland and McGill's \cite{cleveland1984} finding that position along a
+    common scale is the most accurate preattentive channel for magnitude judgment.}
+  \label{fig:traveler_borough_bar}
+\end{figure}
+
+\subsection{Room Type Distribution Bar Chart}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{figures/traveler_roomtype_bar.jpg}
+  \caption{Room Type Distribution Bar Chart (\texttt{px.bar}).
+    The x-axis lists the three room types (\emph{Entire home/apt},
+    \emph{Private room}, \emph{Shared room}); the y-axis shows absolute
+    listing count. Each bar is colour-coded by room type (blue: Entire
+    home/apt; green: Private room; orange: Shared room) and annotated with
+    both the absolute count and the percentage of the total.
+    \emph{Entire home/apt} dominates with 8,164 listings (68.8\%),
+    \emph{Private room} accounts for 3,620 (30.5\%), and \emph{Shared room}
+    is a marginal category with only 85 listings (0.7\%). A bar chart is
+    used here in preference to a pie chart because length-based comparison
+    of counts is perceptually more precise than angle- or area-based judgment
+    required by pie slices \cite{cleveland1984,munzner2014}. The near-zero
+    count of Shared room is made unambiguous by the explicit axis scale,
+    which a thin pie slice would under-represent.}
+  \label{fig:traveler_roomtype_bar}
+\end{figure}
+
+\subsection{Value Score by Borough Bar Chart}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{figures/traveler_value_bar.jpg}
+  \caption{Value Score by Borough (horizontal bar chart with sequential colour
+    scale, \texttt{px.bar}). The value score is computed as
+    $\text{Value Score} = \texttt{number\_of\_reviews} / \texttt{price}$,
+    representing reviews per dollar --- a composite proxy for price-normalised
+    popularity \cite{munzner2014}. A sequential green colour scale (dark green
+    = highest score) reinforces the magnitude ordering already encoded in bar
+    length, providing a redundant visual channel \cite{ware2004} that makes
+    the ranking immediately legible even in grayscale. Brooklyn achieves the
+    highest value score ($\approx$0.22), marginally ahead of Bronx
+    ($\approx$0.215) and Queens ($\approx$0.205), while Manhattan scores
+    lowest ($\approx$0.185) despite its high number of listings.}
+  \label{fig:traveler_value_bar}
+\end{figure}
+
+\subsection{Top 10 Best Value Listings Table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/traveler_table.jpg}
+  \caption{Top 10 Best Value Listings (interactive QTableWidget, ranked by
+    descending value score). Each row represents a single listing with seven
+    columns: Rank, Listing Name, Neighbourhood, Price, Reviews, Minimum Nights,
+    Room Type, and Value Score. Price cells are colour-coded green for budget
+    entries and orange/red for higher-priced options. Minimum Nights cells are
+    colour-coded green ($\leq$3 nights) and red (long minimum stay requirements).
+    The top-ranked listing achieves a value score of 0.7 at \$399/night with
+    287 reviews and a 2-night minimum. The table provides the most actionable
+    output in the Traveler view, transitioning from spatial and statistical
+    exploration to a concrete shortlist of bookable listings.}
+  \label{fig:traveler_table}
+\end{figure}
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  5. INVESTOR VIEW
+%% ═══════════════════════════════════════════════════════════════════════════════
+\section{Investor View: Identifying High-Yield Investment Opportunities}
+
+\subsection{Persona and Task}
+
+The Investor perspective is designed for \textbf{David}, a local resident
+considering purchasing a property to list on Airbnb with the goal of maximising
+return on investment. David is not interested in individual listings; he needs
+aggregated market statistics to compare segments \cite{zervas2017}. His primary
+task is \textbf{Discover / Compare} \cite{brehmer2013}: compare median prices,
+revenue potential, and market saturation across boroughs and room types, and
+identify the highest-yield segment.
+
+\subsection{Estimated Annual Revenue Map}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/investor_map.jpg}
+  \caption{Estimated Annual Revenue Distribution (Scatter Mapbox,
+    \texttt{px.scatter\_mapbox}). Each dot encodes a single listing, with
+    \textbf{colour} representing estimated annual revenue (sequential
+    blue--purple--orange--red scale: blue = \$0, red = \$50,000+) and
+    \textbf{dot size} proportional to the same revenue measure, creating
+    redundant encoding \cite{ware2004} for pre-attentive pop-out. Estimated
+    revenue is computed as $\hat{R} = \texttt{price} \times
+    \texttt{availability\_365}$. The map is shown zoomed into Midtown Manhattan,
+    where the highest-revenue listings concentrate as large orange-to-red dots.
+    The hover tooltip reveals the full data record including estimated revenue,
+    price, and availability.}
+  \label{fig:investor_map}
+\end{figure}
+
+\subsection{Price Distribution by Borough: Violin + Box Plot}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/investor_violin_borough.jpg}
+  \caption{Price Distribution by Borough --- Violin + Box composite
+    (\texttt{go.Violin} with \texttt{box\_visible=True}). Each violin
+    encodes the full kernel density estimate (KDE) of \texttt{price} for
+    one borough, with a boxplot inset showing the five-number summary.
+    Width at any price level is proportional to the density of listings
+    at that price. All five boroughs exhibit broadly symmetric, unimodal
+    distributions centred near \$125. Manhattan's violin shows a slight
+    waist around \$115 indicating bimodality; Bronx and Staten Island extend
+    to lower price floors ($\approx$\$87 and \$82 respectively). Unlike a
+    bar chart that shows only a single average, the violin exposes whether
+    a market is \emph{stable} (compact shape) or \emph{volatile} (elongated
+    shape) --- a critical distinction for investment risk assessment
+    \cite{munzner2014}. Hovering on Manhattan's violin reveals: min \$100,
+    Q1 \$110, median \$125, Q3 \$142, max \$150.}
+  \label{fig:investor_violin_borough}
+\end{figure}
+
+\subsection{Price Distribution by Room Type: Violin + Box Plot}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/investor_violin_room.jpg}
+  \caption{Price Distribution by Room Type --- Violin + Box composite.
+    Three violins compare the \texttt{price} distribution for
+    \emph{Private room} (green), \emph{Entire home/apt} (blue), and
+    \emph{Shared room} (orange). Private room has the lowest median
+    ($\approx$\$117) with a compact, symmetric shape, indicating a stable,
+    affordable segment. Entire home/apt shows a wider interquartile range
+    (Q1 $\approx$\$115, Q3 $\approx$\$145) reflecting the premium associated
+    with whole-unit rentals. Shared room, counterintuitively, exhibits the
+    widest upper tail (reaching $\approx$\$165) despite its theoretical
+    low-cost positioning. Entire home/apt commands a price premium, but
+    Private room offers a more predictable, stable market with lower
+    risk volatility \cite{zervas2017}.}
+  \label{fig:investor_violin_room}
+\end{figure}
+
+\subsection{Investment Yield by Borough}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{figures/investor_yield.jpg}
+  \caption{Investment Yield by Borough (horizontal bar chart with sequential
+    diverging orange colour scale, \texttt{px.bar}). Yield (\%) is computed
+    as estimated annual revenue divided by a normalised property cost proxy.
+    Bars are sorted by descending yield. \textbf{Staten Island} achieves the
+    highest yield at 38.9\%, followed by \textbf{Bronx} (32.1\%) and
+    \textbf{Queens} (26.2\%). \textbf{Brooklyn} (18.2\%) and
+    \textbf{Manhattan} (17.0\%) yield significantly less despite their higher
+    absolute revenue figures, because their property acquisition costs are
+    proportionally higher \cite{wachsmuth2018}. This chart directly overturns
+    a naive assumption: the boroughs with the highest revenue are not the
+    highest-yield investment targets.}
+  \label{fig:investor_yield}
+\end{figure}
+
+\subsection{ROI Analysis: Revenue vs.\ Potential by Room Type}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/investor_roi_bar.jpg}
+  \caption{ROI Analysis: Actual Revenue vs.\ Full Potential Revenue by Room
+    Type (grouped bar chart, \texttt{px.bar} with barmode ``group'').
+    For each room type, two bars are shown: \textbf{green} = average estimated
+    actual annual revenue (based on observed availability); \textbf{blue} =
+    theoretical maximum revenue if listed 365 days per year
+    (\texttt{price} $\times$ 365). The gap between green and blue represents
+    \textbf{unrealised revenue potential}. Entire home/apt shows actual
+    revenue of \$6,912--\$17,640 per borough vs.\ potential of
+    \$43,800--\$45,625, implying a large efficiency gap driven by low
+    \texttt{availability\_365} values ($\approx$70 days/year on average).
+    Private room achieves better efficiency: \$23,666--\$39,238 actual
+    vs.\ \$40,150--\$43,975 potential \cite{zervas2017}.}
+  \label{fig:investor_roi}
+\end{figure}
+
+\subsection{Market Segment Statistics and Top Professional Hosts Tables}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/investor_tables.jpg}
+  \caption{Market Segment Statistics table (top) and Top Professional Hosts
+    table (bottom). \textbf{Market Segment Statistics} provides per-room-type
+    aggregates: count, average price, median price, standard deviation,
+    average revenue, and ROI score. Entire home/apt (8,164 listings, avg
+    \$128, ROI 17.5\%) has the highest listing count but the lowest ROI.
+    Private room (3,620 listings, avg \$119, ROI 22.5\%) and Shared room
+    (85 listings, avg \$117, ROI 26.6\%) achieve higher ROI due to greater
+    availability utilisation. \textbf{Top Professional Hosts} ranks by
+    estimated annual revenue: \emph{Corporate Housing} leads with 62 listings,
+    329 reviews, and \$1,643,800 estimated revenue at \$133 average price
+    \cite{wachsmuth2018}.}
+  \label{fig:investor_tables}
+\end{figure}
+
+\subsection{Market Saturation Scatter Plot}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{figures/investor_saturation.jpg}
+  \caption{Market Saturation Analysis (scatter plot, \texttt{px.scatter}).
+    The x-axis encodes the number of listings per borough (supply); the
+    y-axis encodes average availability in days per year (demand pressure:
+    lower availability = higher occupancy = stronger demand). A horizontal
+    dashed reference line marks the average availability threshold (135 days).
+    \textbf{Manhattan} and \textbf{Brooklyn} appear in the bottom-right
+    quadrant (high supply, low availability $\approx$90 days), indicating
+    \emph{saturated markets}. \textbf{Staten Island} appears in the top-left
+    quadrant (low supply, high availability $\approx$205 days), signalling
+    an \emph{undersupplied, low-demand} market. \textbf{Bronx} (top-left)
+    represents an \emph{emerging opportunity} zone. This quadrant analysis
+    operationalises David's market-entry decision \cite{munzner2014}.}
+  \label{fig:investor_saturation}
+\end{figure}
+
+\subsection{Market Distribution by Host Category}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{figures/investor_host_bar.jpg}
+  \caption{Market Distribution by Host Category (vertical bar chart,
+    \texttt{px.bar}). Hosts are segmented into four categories by portfolio
+    size: \emph{Single (1 listing)}: blue, 8,698 listings (73.3\%);
+    \emph{Small (2--5)}: green, 2,368 listings; \emph{Mega (10+)}: red,
+    522 listings; \emph{Medium (6--10)}: orange, 281 listings. The
+    overwhelming dominance of single-property hosts (73.3\%) confirms that
+    the NYC Airbnb market remains primarily composed of individual hosts
+    despite the presence of professional operators \cite{wachsmuth2018}.
+    A bar chart is used here in preference to a pie chart because the
+    absolute count difference between categories (8,698 vs.\ 281) is more
+    accurately judged from bar height than from wedge area
+    \cite{cleveland1984}.}
+  \label{fig:investor_host_bar}
+\end{figure}
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  6. DESIGN RATIONALE AND VISUAL ENCODING
+%% ═══════════════════════════════════════════════════════════════════════════════
+\section{Design Rationale and Visual Encoding Decisions}
+
+\subsection{Colour Encoding Strategy}
+
+A consistent colour-assignment policy is maintained across all views to reduce
+the cognitive load of relearning encodings between perspectives \cite{ware2004}.
+Borough colours are fixed: Manhattan = orange, Brooklyn = red/blue,
+Queens = green, Bronx = red, Staten Island = purple. Room-type colours are
+fixed: Entire home/apt = blue, Private room = green, Shared room = orange.
+Sequential scales (green to red for price, blue-to-red for revenue) are used
+for ordered quantitative channels \cite{moreland2009}. Diverging scales are
+avoided where the data has no natural midpoint.
+
+\subsection{Bar Charts over Pie Charts}
+
+Following the principle that \emph{length} is a more accurate preattentive
+channel than \emph{angle} or \emph{area} for magnitude judgment
+\cite{cleveland1984,munzner2014}, all room-type and host-category distribution
+charts use vertical or horizontal bar charts rather than pie charts. This is
+particularly important when one category dominates (e.g., Entire home/apt at
+68.8\%), where a pie chart would make the minor category (Shared room, 0.7\%)
+nearly invisible as a thin sliver \cite{tufte1983}, while a bar chart's
+y-axis scaling makes its exact count (85) readable via the annotation.
+
+\subsection{Violin + Box over Plain Bar for Distribution}
+
+The Investor view uses violin plots (with embedded box plots) rather than
+grouped bar charts for price distribution because: (i)\ a single mean or
+median bar conceals the shape of the distribution, which is the investor's
+primary concern for risk assessment \cite{munzner2014}; (ii)\ the violin
+width directly encodes density, allowing the user to see whether a market
+is uni- or bimodal; and (iii)\ the embedded box plot retains the familiar
+five-number summary \cite{tufte1983} so that users unfamiliar with violin
+plots are not disoriented.
+
+\subsection{Symbol Map for Spatial Discovery Tasks}
+
+All geographical views use Scatter Mapbox (symbol map) rather than Choropleth
+or Density Heatmap because: (i)\ the traveller and investor tasks require
+locating \emph{specific listings}, not just regional patterns; (ii)\ the
+dual-channel encoding (colour + size on the same mark) is only possible on
+individual points \cite{ware2004}; and (iii)\ the Mapbox tile layer provides
+spatial context (streets, landmarks) essential for users unfamiliar with NYC
+geography.
+
+\subsection{Filter Panel as Linked Interaction}
+
+The shared filter panel implements a \emph{filter-and-coordinate} interaction
+pattern \cite{heer2012}. Rather than brushing within a single chart, the user
+sets globally-scoped filter conditions that propagate to all charts
+simultaneously. The active filter state is made explicit via the ``Active:''
+token strip at the top of the panel (Figure~\ref{fig:filter_panel}),
+satisfying the Milestone 4 requirement that ``state must be obvious.''
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  7. ACCESSIBILITY
+%% ═══════════════════════════════════════════════════════════════════════════════
+\section{Accessibility and Inclusive Design}
+
+\subsection{Grayscale Mode}
+
+Approximately 8\% of males and 0.5\% of females have some form of colour
+vision deficiency, with red--green colour blindness being the most prevalent
+\cite{wcag21}. The Grayscale Mode (Figure~\ref{fig:theme_grayscale}) converts
+all chart colour channels to luminance-ranked grayscale equivalents
+\cite{moreland2009}, ensuring that information encoded solely in hue is not
+lost. Because the dashboard uses redundant encoding (colour + length for bar
+charts; colour + size for maps \cite{ware2004}), no information is lost in
+the grayscale rendering.
+
+\subsection{Additional Accessibility Features}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Keyboard navigation:} All filter controls are navigable
+        via Tab key.
+  \item \textbf{Screen reader support:} \texttt{AccessibleName} and
+        \texttt{AccessibleDescription} properties are defined for all
+        interactive PySide6 widgets \cite{pyside6}.
+  \item \textbf{Descriptive chart titles:} All Plotly figures carry a
+        concise, informative title that summarises the chart's purpose.
+  \item \textbf{Contrast:} Dark mode maintains WCAG AA contrast ratio
+        \cite{wcag21} for all text elements. Light mode uses dark text
+        on white.
+  \item \textbf{Details-on-demand:} All geographic and statistical charts
+        surface full data records on hover, making information accessible
+        without relying on colour alone \cite{heer2012}.
+\end{itemize}
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  8. KEY FINDINGS
+%% ═══════════════════════════════════════════════════════════════════════════════
+\section{Key Findings}
+
+\subsection{Traveler Findings}
+\begin{enumerate}[leftmargin=1.5em]
+  \item Within the \$100--\$150 budget range with $\geq$100 reviews,
+        Brooklyn and Queens together offer 472 qualifying listings,
+        concentrated in Williamsburg, Astoria, and Flushing.
+  \item The median and mean price both converge at exactly \$125/night
+        under these filters, indicating a symmetric price distribution
+        without extreme outlier distortion.
+  \item Brooklyn achieves the highest value score ($\approx$0.22
+        reviews/\$), outperforming all boroughs as a price-normalised
+        popularity leader.
+  \item Entire home/apt listings constitute 68.8\% of the total market,
+        confirming high supply availability for the preferred room type.
+\end{enumerate}
+
+\subsection{Investor Findings}
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Staten Island (38.9\%) and Bronx (32.1\%)} offer the
+        highest investment yield despite lower absolute revenues, because
+        property acquisition costs are proportionally lower
+        \cite{wachsmuth2018}.
+  \item The gap between actual revenue and full-potential revenue is
+        largest for \emph{Entire home/apt} listings, listed on average
+        for only $\approx$70 days/year. Increasing availability is the
+        single most impactful lever for revenue optimisation.
+  \item Private room shows better revenue efficiency and a lower-risk
+        price distribution (compact violin shape).
+  \item 73.3\% of hosts operate a single property, confirming that the
+        market is not yet dominated by institutional investors in the
+        2019 snapshot \cite{zervas2017}.
+\end{enumerate}
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  9. CONCLUSION
+%% ═══════════════════════════════════════════════════════════════════════════════
+\section{Conclusion}
+
+This project has demonstrated that a persona-driven, multi-view dashboard
+can make a complex 48,895-row urban dataset analytically tractable for five
+distinct user types without requiring any coding expertise from the end user.
+The design decisions documented in this report --- bar charts over pie charts
+for distributional comparisons \cite{cleveland1984}, violin plots over bar
+charts for investor risk analysis \cite{munzner2014}, symbol maps over
+choropleths for spatial discovery tasks \cite{ware2004}, and a globally-scoped
+filter panel for coordinated multi-view exploration \cite{heer2012} --- are
+grounded in perceptual principles and directly mapped to the task abstractions
+established in Milestones 1--3 \cite{brehmer2013}.
+
+The three-theme system (Dark, Light, Grayscale) ensures the dashboard is
+accessible across environmental conditions and user capabilities \cite{wcag21},
+satisfying the Milestone 4 accessibility requirement. The implemented system
+responds to filter changes in under 200\,ms for datasets up to the full
+47,924-row scope, meeting the responsiveness target.
+
+Future work could extend the dashboard to the 2023--2024 Airbnb Open Data
+release to analyse post-pandemic market recovery, add a temporal animation
+layer to the trend charts, and incorporate neighbourhood-level median income
+data to contextualise the regulatory findings \cite{wachsmuth2018}.
+
+%% ═══════════════════════════════════════════════════════════════════════════════
+%%  REFERENCES
+%% ═══════════════════════════════════════════════════════════════════════════════
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
